@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin Dashboard - BookStore</title>
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+  <header class="admin-header">
+    <div class="container">
+      <h1>BookStore Admin</h1>
+      <div class="admin-actions">
+        <button id="btnLogout">Đăng xuất</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="admin-main">
+    <aside class="admin-sidebar">
+      <nav>
+        <ul>
+          <li><a href="#" data-view="dashboard" class="active">Dashboard</a></li>
+          <li><a href="#" data-view="books">Quản lý Sách</a></li>
+          <li><a href="#" data-view="users">Quản lý Người dùng</a></li>
+          <li><a href="#" data-view="orders">Quản lý Đơn hàng</a></li>
+          <li><a href="#" data-view="reports">Báo cáo</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <section class="admin-content">
+      <div id="view-dashboard" class="view">
+        <h2>Dashboard</h2>
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-value" id="stat-users">-</div>
+            <div class="stat-label">Người dùng</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-books">-</div>
+            <div class="stat-label">Sách</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-orders">-</div>
+            <div class="stat-label">Đơn hàng</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="stat-revenue">-</div>
+            <div class="stat-label">Doanh thu</div>
+          </div>
+        </div>
+
+        <div class="recent">
+          <h3>Gần đây - Sách chờ duyệt</h3>
+          <div id="pending-books"></div>
+        </div>
+      </div>
+
+      <div id="view-books" class="view" style="display:none">
+        <h2>Quản lý Sách</h2>
+        <div id="books-table"></div>
+      </div>
+
+      <div id="view-users" class="view" style="display:none">
+        <h2>Quản lý Người dùng</h2>
+        <div id="users-table"></div>
+      </div>
+
+      <div id="view-orders" class="view" style="display:none">
+        <h2>Quản lý Đơn hàng</h2>
+        <div id="orders-table"></div>
+      </div>
+
+      <div id="view-reports" class="view" style="display:none">
+        <h2>Báo cáo</h2>
+        <div id="reports-area">
+          <p>Chưa có số liệu - cần endpoint thống kê ở backend.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="js/admin.js"></script>
+</body>
+</html>

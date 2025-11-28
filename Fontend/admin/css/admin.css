@@ -1,0 +1,31 @@
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: #101214; color: #e6eef6; }
+.container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+.admin-header { background: #111217; border-bottom: 1px solid #222; padding: 14px 0; }
+.admin-header h1 { display: inline-block; margin: 0; color: #ff6b4a; }
+.admin-header .admin-actions { float: right; }
+.admin-header button { background: #ff6b4a; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; }
+
+.admin-main { display: flex; min-height: calc(100vh - 64px); }
+.admin-sidebar { width: 220px; background: #0f1113; border-right: 1px solid #222; padding: 20px; }
+.admin-sidebar ul { list-style: none; padding: 0; margin: 0; }
+.admin-sidebar li { margin-bottom: 8px; }
+.admin-sidebar a { color: #cbd5df; text-decoration: none; display: block; padding: 10px 12px; border-radius: 6px; }
+.admin-sidebar a.active, .admin-sidebar a:hover { background: #1f2933; color: #fff; }
+
+.admin-content { flex: 1; padding: 24px; }
+.stats { display: flex; gap: 16px; margin-bottom: 20px; }
+.stat-card { background: #0f1315; padding: 18px; border-radius: 8px; flex: 1; text-align: center; }
+.stat-value { font-size: 28px; color: #ffd166; font-weight: bold; }
+.stat-label { font-size: 13px; color: #9aa6b2; }
+
+#pending-books, #books-table, #users-table, #orders-table { background: #0e1112; padding: 12px; border-radius: 8px; }
+.book-row, .user-row, .order-row { display: flex; gap: 12px; padding: 10px; border-bottom: 1px solid #151718; align-items: center; }
+.book-row img { width: 120px; height: 160px; object-fit: cover; border-radius: 6px; }
+.book-row .meta { flex: 1; }
+.btn { background: #ff6b4a; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
+.btn.secondary { background: #475569; }
+
+.table-head { display: flex; gap: 12px; padding: 10px; font-weight: bold; border-bottom: 1px solid #1a1c1d; }
+
+.notice { padding: 12px; background: #101010; border-left: 4px solid #ff6b4a; margin-bottom: 12px; }

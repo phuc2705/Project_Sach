@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookStore Online - Mua Sách Trực Tuyến</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-container">
+            <a href="index.html" class="logo">📚 BookStore Online</a>
+            
+            <div class="search-bar">
+                <input type="text" id="searchInput" placeholder="Tìm kiếm sách, tác giả...">
+                <button onclick="searchBooks()">🔍</button>
+            </div>
+
+            <div class="header-actions">
+                <a href="#" class="header-btn" onclick="openModal('loginModal')">
+                    👤 Đăng nhập
+                </a>
+                <a href="#" class="header-btn" onclick="openModal('registerModal')">
+                    📝 Đăng ký
+                </a>
+                <a href="#" class="header-btn" onclick="viewCart()">
+                    🛒 Giỏ hàng <span class="cart-count" id="cartCount">0</span>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <a href="#" class="nav-link" onclick="filterCategory('all')">Tất cả</a>
+            <a href="#" class="nav-link" onclick="filterCategory('vanhoc')">Văn học</a>
+            <a href="#" class="nav-link" onclick="filterCategory('kinhte')">Kinh tế</a>
+            <a href="#" class="nav-link" onclick="filterCategory('kynang')">Kỹ năng sống</a>
+            <a href="#" class="nav-link" onclick="filterCategory('thieunhi')">Thiếu nhi</a>
+            <a href="#" class="nav-link" onclick="filterCategory('sale')">📢 Sale Sốc</a>
+        </div>
+    </nav>
+
+    <!-- Banner -->
+    <section class="banner">
+        <h1>Chào mừng đến BookStore Online</h1>
+        <p>Hàng nghìn đầu sách chất lượng - Giao hàng toàn quốc - Ưu đãi hấp dẫn</p>
+    </section>
+
+    <!-- Promotions -->
+    <section class="promotions">
+        <div class="promo-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+            <h3>Giảm giá sách mới</h3>
+            <div class="discount">-20%</div>
+            <p>Cho đơn hàng từ 200.000đ</p>
+        </div>
+        <div class="promo-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+            <h3>Miễn phí vận chuyển</h3>
+            <div class="discount">0đ</div>
+            <p>Cho đơn hàng từ 150.000đ</p>
+        </div>
+        <div class="promo-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+            <h3>Sách hay tuần này</h3>
+            <div class="discount">-15%</div>
+            <p>Top sách bán chạy nhất</p>
+        </div>
+    </section>
+
+    <!-- Main Content -->
+    <div class="container">
+        <h2 class="section-title">📚 Sách Bán Chạy</h2>
+        
+        <div class="categories">
+            <button class="category-btn active" onclick="filterCategory('all')">Tất cả</button>
+            <button class="category-btn" onclick="filterCategory('vanhoc')">Văn học</button>
+            <button class="category-btn" onclick="filterCategory('kinhte')">Kinh tế</button>
+            <button class="category-btn" onclick="filterCategory('kynang')">Kỹ năng sống</button>
+            <button class="category-btn" onclick="filterCategory('thieunhi')">Thiếu nhi</button>
+        </div>
+
+        <div class="book-grid" id="bookGrid">
+            <!-- Books will be loaded here by JavaScript -->
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-section">
+                <h3>Về BookStore Online</h3>
+                <p>Hệ thống bán sách trực tuyến uy tín hàng đầu Việt Nam</p>
+                <p>📞 Hotline: 0933 109 009</p>
+                <p>📧 Email: support@bookstore.vn</p>
+            </div>
+            <div class="footer-section">
+                <h3>Chính sách</h3>
+                <a href="#">Chính sách đổi trả</a>
+                <a href="#">Chính sách bảo mật</a>
+                <a href="#">Điều khoản sử dụng</a>
+                <a href="#">Hướng dẫn mua hàng</a>
+            </div>
+            <div class="footer-section">
+                <h3>Hỗ trợ</h3>
+                <a href="#">Câu hỏi thường gặp</a>
+                <a href="#">Hướng dẫn thanh toán</a>
+                <a href="#">Tra cứu đơn hàng</a>
+                <a href="#">Liên hệ</a>
+            </div>
+            <div class="footer-section">
+                <h3>Kết nối với chúng tôi</h3>
+                <a href="#">Facebook</a>
+                <a href="#">Instagram</a>
+                <a href="#">Zalo</a>
+                <a href="#">Youtube</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2024 BookStore Online. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal('loginModal')">&times;</span>
+            <h2 style="margin-bottom: 20px; color: #2c3e50;">Đăng nhập</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" required placeholder="Nhập email của bạn">
+                </div>
+                <div class="form-group">
+                    <label>Mật khẩu</label>
+                    <input type="password" name="password" required placeholder="Nhập mật khẩu">
+                </div>
+                <button type="submit" class="form-btn">Đăng nhập</button>
+                <p style="text-align: center; margin-top: 15px; font-size: 14px;">
+                    Chưa có tài khoản? <a href="#" style="color: #e74c3c;" onclick="closeModal('loginModal'); openModal('registerModal')">Đăng ký ngay</a>
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Register Modal -->
+    <div id="registerModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal('registerModal')">&times;</span>
+            <h2 style="margin-bottom: 20px; color: #2c3e50;">Đăng ký tài khoản</h2>
+            <form id="registerForm">
+                <div class="form-group">
+                    <label>Họ và tên</label>
+                    <input type="text" name="fullname" required placeholder="Nhập họ và tên">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" required placeholder="Nhập email">
+                </div>
+                <div class="form-group">
+                    <label>Số điện thoại</label>
+                    <input type="tel" name="phone" required placeholder="Nhập số điện thoại">
+                </div>
+                <div class="form-group">
+                    <label>Mật khẩu</label>
+                    <input type="password" name="password" required placeholder="Nhập mật khẩu">
+                </div>
+                <button type="submit" class="form-btn">Đăng ký</button>
+                <p style="text-align: center; margin-top: 15px; font-size: 14px;">
+                    Đã có tài khoản? <a href="#" style="color: #e74c3c;" onclick="closeModal('registerModal'); openModal('loginModal')">Đăng nhập</a>
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Load JavaScript -->
+    <script src="js/script.js"></script>
+</body>
+</html>

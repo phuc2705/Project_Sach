@@ -3,11 +3,11 @@ from app import get_db_connection, hash_password
 # Script để chèn dữ liệu mẫu vào database. Chạy thủ công từ thư mục Backend.
 # LƯU Ý: Kiểm tra schema bảng trước khi chạy. Script này giả định các bảng: Users, Categories, Books, Orders, OrderDetails.
 
-SAMPLE_CATEGORIES = ['kynang','vanhoc','kinhte','thieunhi']
+SAMPLE_CATEGORIES = []
 SAMPLE_BOOKS = [
-    dict(title='Đắc Nhân Tâm', author='Dale Carnegie', price=86000, old_price=120000, description='Kinh điển về giao tiếp', stock=50, rating=4.8, image_url='assets/images/book1.jpg', category_name='kynang'),
-    dict(title='Nhà Giả Kim', author='Paulo Coelho', price=79000, old_price=99000, description='Tiểu thuyết triết lý', stock=40, rating=4.9, image_url='assets/images/book2.svg', category_name='vanhoc'),
-    dict(title='Sapiens: Lược Sử Loài Người', author='Yuval Noah Harari', price=189000, old_price=230000, description='Lược sử nhân loại', stock=30, rating=4.7, image_url='assets/images/book3.svg', category_name='kinhte'),
+    dict(title='Đắc Nhân Tâm', author='Dale Carnegie', price=86000, old_price=120000, description='Kinh điển về giao tiếp', stock=50, rating=4.8, image_url='assets/images/book1.jpg', category_name='Kỹ Năng'),
+    dict(title='Nhà Giả Kim', author='Paulo Coelho', price=79000, old_price=99000, description='Tiểu thuyết triết lý', stock=40, rating=4.9, image_url='assets/images/book2.jpg', category_name='Văn Học'),
+    dict(title='Sapiens: Lược Sử Loài Người', author='Yuval Noah Harari', price=189000, old_price=230000, description='Lược sử nhân loại', stock=30, rating=4.7, image_url='assets/images/book3.jpg', category_name='Kinh Tế'),
 ]
 
 DEFAULT_USERS = [

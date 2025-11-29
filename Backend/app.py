@@ -19,7 +19,7 @@ def get_db_connection():
             'DRIVER={SQL Server};'
             'SERVER=PHUCDEPTRAI\\PHUCNGUYENTRONG;'
             'DATABASE=BookStoreDBO;'
-            'Trusted_Connection=yes;'  # DÙNG WINDOWS LOGIN
+            'Trusted_Connection=yes;'
         )
         return conn
     except Exception as e:
@@ -127,12 +127,10 @@ def register():
         
         cursor = conn.cursor()
         
-        # Kiểm tra email đã tồn tại
         cursor.execute("SELECT user_id FROM Users WHERE email = ?", (email,))
         if cursor.fetchone():
             return jsonify({'message': 'Email đã được đăng ký!'}), 400
         
-        # Thêm user mới
         hashed_password = hash_password(password)
         cursor.execute("""
             INSERT INTO Users (fullname, email, phone, password, role, status, created_at)
@@ -180,10 +178,9 @@ def login():
         if not user:
             return jsonify({'message': 'Email hoặc mật khẩu không đúng!'}), 401
         
-        if user[5] != 'active':  # status
+        if user[5] != 'active':
             return jsonify({'message': 'Tài khoản đã bị khóa!'}), 403
         
-        # Tạo token
         token = generate_token(user[0])
         
         return jsonify({
@@ -206,10 +203,17 @@ def login():
 
 @app.route('/api/books', methods=['GET'])
 def get_books():
-    """Lấy danh sách sách"""
+    """Lấy danh sách sách với tìm kiếm và lọc nâng cao"""
     try:
+        # Lấy parameters
         category = request.args.get('category')
         search = request.args.get('search')
+        isbn = request.args.get('isbn')
+        author = request.args.get('author')
+        min_price = request.args.get('min_price')
+        max_price = request.args.get('max_price')
+        condition = request.args.get('condition')  # new/used
+        sort_by = request.args.get('sort_by', 'created_at')  # price_asc, price_desc, rating, name
         
         conn = get_db_connection()
         if not conn:
@@ -219,7 +223,8 @@ def get_books():
         
         query = """
             SELECT b.book_id, b.title, b.author, b.price, b.old_price, 
-                   b.description, b.stock, b.rating, b.image_url, c.category_name
+                   b.description, b.stock, b.rating, b.image_url, c.category_name,
+                   b.isbn, b.condition, b.publisher, b.publish_year
             FROM Books b
             LEFT JOIN Categories c ON b.category_id = c.category_id
             WHERE b.status = 'approved'
@@ -227,15 +232,48 @@ def get_books():
         
         params = []
         
+        # Tìm kiếm theo tên hoặc ISBN hoặc tác giả
+        if search:
+            query += " AND (b.title LIKE ? OR b.author LIKE ? OR b.isbn LIKE ?)"
+            params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
+        
+        if isbn:
+            query += " AND b.isbn = ?"
+            params.append(isbn)
+            
+        if author:
+            query += " AND b.author LIKE ?"
+            params.append(f'%{author}%')
+        
         if category:
             query += " AND c.category_name = ?"
             params.append(category)
         
-        if search:
-            query += " AND (b.title LIKE ? OR b.author LIKE ?)"
-            params.extend([f'%{search}%', f'%{search}%'])
+        # Lọc theo giá
+        if min_price:
+            query += " AND b.price >= ?"
+            params.append(float(min_price))
         
-        query += " ORDER BY b.created_at DESC"
+        if max_price:
+            query += " AND b.price <= ?"
+            params.append(float(max_price))
+        
+        # Lọc theo tình trạng
+        if condition:
+            query += " AND b.condition = ?"
+            params.append(condition)
+        
+        # Sắp xếp
+        if sort_by == 'price_asc':
+            query += " ORDER BY b.price ASC"
+        elif sort_by == 'price_desc':
+            query += " ORDER BY b.price DESC"
+        elif sort_by == 'rating':
+            query += " ORDER BY b.rating DESC"
+        elif sort_by == 'name':
+            query += " ORDER BY b.title ASC"
+        else:
+            query += " ORDER BY b.created_at DESC"
         
         cursor.execute(query, params)
         books = cursor.fetchall()
@@ -246,13 +284,17 @@ def get_books():
                 'id': book[0],
                 'title': book[1],
                 'author': book[2],
-                'price': book[3],
-                'old_price': book[4],
+                'price': float(book[3]) if book[3] else 0,
+                'old_price': float(book[4]) if book[4] else 0,
                 'description': book[5],
                 'stock': book[6],
                 'rating': float(book[7]) if book[7] else 0.0,
                 'image_url': book[8],
-                'category': book[9]
+                'category': book[9],
+                'isbn': book[10] if len(book) > 10 else None,
+                'condition': book[11] if len(book) > 11 else 'new',
+                'publisher': book[12] if len(book) > 12 else None,
+                'publish_year': book[13] if len(book) > 13 else None
             })
         
         cursor.close()
@@ -266,7 +308,7 @@ def get_books():
 
 @app.route('/api/books/<int:book_id>', methods=['GET'])
 def get_book_detail(book_id):
-    """Lấy chi tiết sách"""
+    """Lấy chi tiết sách với reviews"""
     try:
         conn = get_db_connection()
         if not conn:
@@ -274,10 +316,12 @@ def get_book_detail(book_id):
         
         cursor = conn.cursor()
         
+        # Lấy thông tin sách
         cursor.execute("""
             SELECT b.book_id, b.title, b.author, b.price, b.old_price,
                    b.description, b.stock, b.rating, b.image_url, 
-                   c.category_name, u.fullname as seller_name
+                   c.category_name, u.fullname as seller_name,
+                   b.isbn, b.condition, b.publisher, b.publish_year
             FROM Books b
             LEFT JOIN Categories c ON b.category_id = c.category_id
             LEFT JOIN Users u ON b.seller_id = u.user_id
@@ -289,18 +333,42 @@ def get_book_detail(book_id):
         if not book:
             return jsonify({'message': 'Không tìm thấy sách!'}), 404
         
+        # Lấy reviews
+        cursor.execute("""
+            SELECT r.rating, r.comment, r.created_at, u.fullname
+            FROM Reviews r
+            LEFT JOIN Users u ON r.user_id = u.user_id
+            WHERE r.book_id = ?
+            ORDER BY r.created_at DESC
+        """, (book_id,))
+        
+        reviews = cursor.fetchall()
+        reviews_list = []
+        for review in reviews:
+            reviews_list.append({
+                'rating': float(review[0]) if review[0] else 0,
+                'comment': review[1],
+                'created_at': review[2].strftime('%Y-%m-%d %H:%M:%S') if review[2] else None,
+                'user_name': review[3]
+            })
+        
         book_detail = {
             'id': book[0],
             'title': book[1],
             'author': book[2],
-            'price': book[3],
-            'old_price': book[4],
+            'price': float(book[3]) if book[3] else 0,
+            'old_price': float(book[4]) if book[4] else 0,
             'description': book[5],
             'stock': book[6],
             'rating': float(book[7]) if book[7] else 0.0,
             'image_url': book[8],
             'category': book[9],
-            'seller_name': book[10]
+            'seller_name': book[10],
+            'isbn': book[11],
+            'condition': book[12],
+            'publisher': book[13],
+            'publish_year': book[14],
+            'reviews': reviews_list
         }
         
         cursor.close()
@@ -312,18 +380,62 @@ def get_book_detail(book_id):
         print(f"Get book detail error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
 
+@app.route('/api/books/<int:book_id>/review', methods=['POST'])
+@token_required
+def add_review(current_user_id, book_id):
+    """Thêm đánh giá sách"""
+    try:
+        data = request.get_json()
+        rating = data.get('rating')
+        comment = data.get('comment')
+        
+        if not rating:
+            return jsonify({'message': 'Vui lòng đánh giá!'}), 400
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'message': 'Không thể kết nối database!'}), 500
+        
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO Reviews (book_id, user_id, rating, comment, created_at)
+            VALUES (?, ?, ?, ?, GETDATE())
+        """, (book_id, current_user_id, rating, comment))
+        
+        # Cập nhật rating trung bình của sách
+        cursor.execute("""
+            UPDATE Books
+            SET rating = (SELECT AVG(CAST(rating AS FLOAT)) FROM Reviews WHERE book_id = ?)
+            WHERE book_id = ?
+        """, (book_id, book_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'message': 'Đánh giá thành công!'}), 201
+        
+    except Exception as e:
+        print(f"Add review error: {e}")
+        return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+
 # ==================== ORDER ROUTES ====================
 
 @app.route('/api/orders', methods=['POST'])
 @token_required
 def create_order(current_user_id):
-    """Tạo đơn hàng mới"""
+    """Tạo đơn hàng mới với thông tin chi tiết"""
     try:
         data = request.get_json()
         items = data.get('items')
         total = data.get('total')
+        shipping_address = data.get('shipping_address')
+        phone = data.get('phone')
+        payment_method = data.get('payment_method', 'COD')
+        notes = data.get('notes', '')
         
-        if not items or not total:
+        if not items or not total or not shipping_address or not phone:
             return jsonify({'message': 'Thông tin đơn hàng không hợp lệ!'}), 400
         
         conn = get_db_connection()
@@ -334,10 +446,10 @@ def create_order(current_user_id):
         
         # Tạo order
         cursor.execute("""
-            INSERT INTO Orders (buyer_id, total_amount, status, created_at)
+            INSERT INTO Orders (buyer_id, total_amount, status, shipping_address, phone, payment_method, notes, created_at)
             OUTPUT INSERTED.order_id
-            VALUES (?, ?, 'pending', GETDATE())
-        """, (current_user_id, total))
+            VALUES (?, ?, 'pending', ?, ?, ?, ?, GETDATE())
+        """, (current_user_id, total, shipping_address, phone, payment_method, notes))
         
         order_id = cursor.fetchone()[0]
         
@@ -380,7 +492,7 @@ def get_user_orders(current_user_id):
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT order_id, total_amount, status, created_at
+            SELECT order_id, total_amount, status, shipping_address, phone, payment_method, created_at
             FROM Orders
             WHERE buyer_id = ?
             ORDER BY created_at DESC
@@ -392,9 +504,12 @@ def get_user_orders(current_user_id):
         for order in orders:
             orders_list.append({
                 'order_id': order[0],
-                'total_amount': order[1],
+                'total_amount': float(order[1]) if order[1] else 0,
                 'status': order[2],
-                'created_at': order[3].strftime('%Y-%m-%d %H:%M:%S')
+                'shipping_address': order[3],
+                'phone': order[4],
+                'payment_method': order[5],
+                'created_at': order[6].strftime('%Y-%m-%d %H:%M:%S') if order[6] else None
             })
         
         cursor.close()
@@ -438,7 +553,6 @@ def get_categories():
 
 # ==================== ADMIN ENDPOINTS ====================
 
-
 @app.route('/api/admin/stats', methods=['GET'])
 @admin_required
 def admin_stats(current_user_id):
@@ -471,7 +585,6 @@ def admin_stats(current_user_id):
         print(f"Admin stats error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
 
-
 @app.route('/api/admin/users', methods=['GET'])
 @admin_required
 def admin_list_users(current_user_id):
@@ -494,7 +607,6 @@ def admin_list_users(current_user_id):
         print(f"Admin list users error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
 
-
 @app.route('/api/admin/users/lock/<int:user_id>', methods=['POST'])
 @admin_required
 def admin_lock_user(current_user_id, user_id):
@@ -512,7 +624,6 @@ def admin_lock_user(current_user_id, user_id):
         print(f"Lock user error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
 
-
 @app.route('/api/admin/users/unlock/<int:user_id>', methods=['POST'])
 @admin_required
 def admin_unlock_user(current_user_id, user_id):
@@ -529,7 +640,6 @@ def admin_unlock_user(current_user_id, user_id):
     except Exception as e:
         print(f"Unlock user error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
-
 
 @app.route('/api/admin/orders', methods=['GET'])
 @admin_required
@@ -551,7 +661,6 @@ def admin_list_orders(current_user_id):
         print(f"Admin list orders error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
 
-
 @app.route('/api/admin/books/approve/<int:book_id>', methods=['POST'])
 @admin_required
 def admin_approve_book(current_user_id, book_id):
@@ -568,7 +677,6 @@ def admin_approve_book(current_user_id, book_id):
     except Exception as e:
         print(f"Approve book error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
-
 
 @app.route('/api/admin/books/hide/<int:book_id>', methods=['POST'])
 @admin_required

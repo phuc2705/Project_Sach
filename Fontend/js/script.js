@@ -14,7 +14,73 @@ let currentFilters = {
     sortBy: 'created_at'
 };
 
-// Initialize when page loads
+// ==================== UTILITY FUNCTIONS ====================
+
+function getAbsoluteImageUrl(imageUrl) {
+    if (imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('assets/'))) {
+        return imageUrl;
+    }
+    if (imageUrl) {
+        return `${API_BASE_URL}/uploads/${imageUrl}`;
+    }
+    return 'assets/images/book1.jpg'; 
+}
+
+function formatPrice(price) {
+    return price.toLocaleString('vi-VN') + 'đ';
+}
+
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type}`;
+    notification.textContent = message;
+    notification.style.position = 'fixed';
+    notification.style.top = '80px';
+    notification.style.right = '20px';
+    notification.style.zIndex = '9999';
+    notification.style.minWidth = '300px';
+    notification.style.animation = 'slideIn 0.3s';
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.animation = 'fadeOut 0.3s';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+// ==================== BOOKS DATA (FIXED SAMPLE DATA VÀ CÁC TRƯỜNG MỚI) ====================
+
+function getSampleBooksData() {
+    // Dữ liệu sách mẫu với 4 trường mới (isbn, condition, publisher, publish_year)
+    return [
+        { id: 1, title: "Đắc Nhân Tâm", author: "Dale Carnegie", category: "Kỹ năng sống", price: 86000, old_price: 120000, rating: 4.8, image_url: "book1.jpg", isbn: "978-0671027032", condition: "new", publisher: "NXB Tổng hợp", publish_year: 2018, description: "Cuốn sách kinh điển về nghệ thuật giao tiếp và ứng xử" },
+        { id: 2, title: "Nhà Giả Kim", author: "Paulo Coelho", category: "Văn học", price: 79000, old_price: 99000, rating: 4.9, image_url: "book2.jpg", isbn: "978-0062315007", condition: "new", publisher: "NXB Hội Nhà Văn (phát hành)", publish_year: 2021, description: "Hành trình tìm kiếm kho báu và ý nghĩa cuộc sống" },
+        { id: 3, title: "Sapiens: Lược Sử Loài Người", author: "Yuval Noah Harari", category: "Văn học", price: 195000, old_price: 250000, rating: 4.9, image_url: "book3.jpg", isbn: "978-1501175466", condition: "new", publisher: "NXB Knowledge Publishing House (ấn bản tiếng Việt) ", publish_year: 2019, description: "“Sapiens” đặt câu hỏi: loài người có thật sự hạnh phúc hơn không?" },
+        { id: 4, title: "Tư Duy Nhanh Và Chậm", author: "Daniel Kahneman", category: "Kinh tế", price: 150000, old_price: 180000, rating: 4.7, image_url: "book4.jpg", isbn: "978-6045939226", condition: "new", publisher: "NXB Thế Giới (xuất bản tại VN)", publish_year: 2019, description: "Tâm lý khi lựa chọn, tiêu tiền, hoặc ra quyết định lớn." },
+        { id: 5, title: "Trường Ca Achilles", author: "Madeline Miller", category: "Văn học", price: 50000, old_price: 65000, rating: 4.5, image_url: "book5.jpg", isbn: "978-6046200155", condition: "new", publisher: "NXB Kim Đồng (ấn bản tiếng Việt)", publish_year: 2021, description: "Mối quan hệ lớn dần từ bạn bè đến tri kỷ" },
+        { id: 6, title: "Tuổi trẻ đáng giá bao nhiêu?", author: "Rosie Nguyễn", category: "Kỹ năng sống", price: 120000, old_price: 140000, rating: 4.6, image_url: "book6.jpg", isbn: "978-6045939227", condition: "used", publisher: "NXB Hội Nhà Văn (phát hành)", publish_year: 2021, description: "Giá trị của tuổi trẻ và cách sống ý nghĩa." },
+        { id: 7, title: "Harry Potter và Hòn Đá Phù Thủy", author: "J.K. Rowling", category: "Thiếu nhi", price: 95000, old_price: 120000, rating: 4.9, image_url: "book7.jpg", isbn: "978-0545582889", condition: "new", publisher: "NXB Trẻ", publish_year: 2001, description: "Hành trình phép thuật của cậu bé phù thủy Harry Potter." },
+        { id: 8, title: "Charlie và Nhà Máy Sô-cô-la", author: "Roald Dahl", category: "Thiếu nhi", price: 79000, old_price: 100000, rating: 4.7, image_url: "book8.jpg", isbn: "978-0142410318", condition: "new", "publisher": "NXB Kim Đồng", publish_year: 2000, description: "Cuộc phiêu lưu của Charlie trong nhà máy sô-cô-la kỳ diệu." },
+        { id: 9, title: "Cô Bé Lọ Lem", author: "Anh Quốc", category: "Thiếu nhi", price: 65000, old_price: 85000, rating: 4.6, image_url: "book10.jpg", isbn: "978-0545672341", condition: "new", publisher: "NXB Văn Học", publish_year: 2015, description: "Truyện cổ tích nổi tiếng về cô bé Lọ Lem vượt qua gian khó." },
+        { id: 10, title: "IT – Hắn", author: "Stephen King", category: "Kinh dị", price: 120000, old_price: 150000, rating: 4.8, image_url: "book9.jpg", isbn: "978-1501142970", condition: "new", publisher: "NXB Tổng hợp", publish_year: 2017, "description": "Câu chuyện kinh dị về chú hề ma quái tấn công thị trấn Derry." },
+        { id: 11, title: "Ngôi Nhà Ma Ám Trên Đồi", author: "Shirley Jackson", category: "Kinh dị", price: 88000, old_price: 110000, rating: 4.6, image_url: "book11.jpg", isbn: "978-0142437209", condition: "new", publisher: "NXB Văn Học", publish_year: 2016, description: "Truyện kinh dị kinh điển về một ngôi nhà bị ma ám." },
+        { id: 12, title: "Khu Rừng Ma Ám", author: "C. J. Cooke", category: "Kinh dị", price: 76000, old_price: 95000, rating: 4.5, image_url: "book12.jpg", isbn: "978-6042098765", condition: "new", publisher: "NXB Dân Trí", publish_year: 2023, description: "“Khu Rừng Ma Ám” kể về một khu rừng cổ xưa sát biên giới Scotland, nơi ẩn chứa những sinh vật cổ đại, u ám — và những ai dám đánh thức chúng phải trả giá khủng khiếp." },
+        { id: 13, title: "Nhà Giàu Có Nhất Thành Babylon", author: "George S. Clason", category: "Kinh tế", price: 85000, old_price: 110000, rating: 4.8, image_url: "book13.jpg", isbn: "978-0451205360", condition: "new", publisher: "NXB Tổng hợp", publish_year: 2014, description: "Những bài học về quản lý tiền bạc từ thành Babylon cổ đại." },
+        { id: 14, title: "Cách Nền Kinh Tế Vận Hành", author: "Roger E. A. Farmer", category: "Kinh tế", price: 99000, old_price: 130000, rating: 4.7, image_url: "book14.jpg", isbn: "978-1612680194", condition: "new", publisher: "NXB Tri Thức", publish_year: 2010, description: "Phân tích cách thức vận hành của nền kinh tế hiện đại, các chu kỳ kinh tế, khủng hoảng, chính sách tiền tệ, vai trò của chính phủ, ngân hàng, doanh nghiệp, v.v." }
+    ];
+}
+
+function getFilteredSampleBooks(filters) {
+    const samples = getSampleBooksData();
+    if (filters.category === 'all') {
+        return samples;
+    }
+    return samples.filter(book => book.category === filters.category);
+}
+
+// ==================== Initialize when page loads ====================
+
 document.addEventListener('DOMContentLoaded', function() {
     loadBooks();
     loadCart();
@@ -175,16 +241,34 @@ function updateUIForLoggedInUser() {
 
 // ==================== CATEGORIES ====================
 
+// Trong file Fontend/js/script.js
+
+// Danh sách thể loại cố định (Chỉ dùng cho mục đích dự phòng nếu API lỗi)
+const FALLBACK_CATEGORIES = [
+    { name: "Văn học" },
+    { name: "Kinh tế" },
+    { name: "Kỹ năng sống" },
+    { name: "Thiếu nhi" },
+    { name: "Kinh dị" }
+];
+
 async function loadCategories() {
     try {
         const response = await fetch(`${API_BASE_URL}/categories`);
         const data = await response.json();
         
-        if (response.ok && data.categories) {
+        if (response.ok && Array.isArray(data.categories)) {
+            // FIX: Sử dụng DỮ LIỆU THỰC TẾ từ API Backend
             renderCategoryButtons(data.categories);
+        } else {
+            // Nếu API không trả về mảng hợp lệ, dùng danh sách dự phòng
+            console.warn('API returned invalid categories data. Using fallback list.');
+            renderCategoryButtons(FALLBACK_CATEGORIES);
         }
     } catch (error) {
-        console.error('Error loading categories:', error);
+        // Nếu có lỗi kết nối/mạng, dùng danh sách dự phòng
+        console.error('Error loading categories from API:', error);
+        renderCategoryButtons(FALLBACK_CATEGORIES);
     }
 }
 
@@ -192,20 +276,38 @@ function renderCategoryButtons(categories) {
     const categoriesContainer = document.querySelector('.categories');
     if (!categoriesContainer) return;
     
+    // Luôn thêm nút "Tất cả"
     categoriesContainer.innerHTML = `
-        <button class="category-btn active" onclick="filterCategory('all')">Tất cả</button>
+        <button class="category-btn active" onclick="filterCategory('all', event)">Tất cả</button>
     `;
     
     categories.forEach(cat => {
         const btn = document.createElement('button');
         btn.className = 'category-btn';
         btn.textContent = cat.name;
-        btn.onclick = () => filterCategory(cat.name);
+        btn.onclick = (event) => filterCategory(cat.name, event);
         categoriesContainer.appendChild(btn);
     });
 }
 
-// ==================== BOOKS ====================
+function filterCategory(category, event) {
+    currentFilters.category = category;
+    currentCategory = category;
+    
+    const buttons = document.querySelectorAll('.category-btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    
+    if (event && event.target) {
+        event.target.classList.add('active');
+    } else {
+        const defaultBtn = document.querySelector(`.category-btn[onclick*="${category}"]`);
+        if (defaultBtn) defaultBtn.classList.add('active');
+    }
+    
+    loadBooks();
+}
+
+// ==================== BOOKS (SỬA LỖI LỌC & HIỂN THỊ ẢNH MẪU) ====================
 
 async function loadBooks() {
     try {
@@ -233,61 +335,24 @@ async function loadBooks() {
                 books = data.books;
                 displayBooks(books);
             } else {
-                loadSampleBooks();
+                // FIX LỖI: API trả về 0 sách -> Áp dụng lọc lên sách mẫu
+                const filteredSamples = getFilteredSampleBooks(currentFilters);
+                books = getSampleBooksData(); 
+                displayBooks(filteredSamples);
             }
         } else {
-            loadSampleBooks();
+            // FIX LỖI: API lỗi -> Áp dụng lọc lên sách mẫu
+            const filteredSamples = getFilteredSampleBooks(currentFilters);
+            books = getSampleBooksData();
+            displayBooks(filteredSamples);
         }
     } catch (error) {
         console.error('Error loading books:', error);
-        loadSampleBooks();
+        // FIX LỖI: Network Error -> Áp dụng lọc lên sách mẫu
+        const filteredSamples = getFilteredSampleBooks(currentFilters);
+        books = getSampleBooksData(); 
+        displayBooks(filteredSamples);
     }
-}
-
-function loadSampleBooks() {
-    books = [
-        {
-            id: 1,
-            title: "Đắc Nhân Tâm",
-            author: "Dale Carnegie",
-            category: "",
-            price: 86000,
-            old_price: 120000,
-            rating: 4.8,
-            image_url: "assets/images/book1.jpg",
-            isbn: "978-0671027032",
-            condition: "new",
-            description: "Cuốn sách kinh điển về nghệ thuật giao tiếp và ứng xử"
-        },
-        {
-            id: 2,
-            title: "Nhà Giả Kim",
-            author: "Paulo Coelho",
-            category: "",
-            price: 79000,
-            old_price: 99000,
-            rating: 4.9,
-            image_url: "assets/images/book2.jpg",
-            isbn: "978-0062315007",
-            condition: "new",
-            description: "Hành trình tìm kiếm kho báu và ý nghĩa cuộc sống"
-        },
-        {
-            id: 3,
-            title: "It - Gã Hề Ma Quái",
-            author: "Stephen King",
-            category: "",
-            price: 195000,
-            old_price: 250000,
-            rating: 4.9,
-            image_url: "https://salt.tikicdn.com/cache/w1200/ts/product/5e/18/24/2a6154ba08df6ce6161c13f4303fa19e.jpg",
-            isbn: "978-1501175466",
-            condition: "new",
-            description: "Câu chuyện kinh dị về chú hề Pennywise đáng sợ"
-        }
-    ];
-    
-    displayBooks(books);
 }
 
 function displayBooks(booksToShow) {
@@ -306,12 +371,12 @@ function displayBooks(booksToShow) {
         bookCard.className = 'book-card';
         bookCard.onclick = () => viewBookDetail(book.id);
         
-        const imgSrc = book.image_url && book.image_url.trim() !== '' ? book.image_url : 'assets/images/book1.jpg';
+        const finalImgSrc = getAbsoluteImageUrl(book.image_url);
         const conditionBadge = book.condition === 'used' ? '<span class="condition-badge">Cũ</span>' : '<span class="condition-badge new">Mới</span>';
         
         bookCard.innerHTML = `
             <div class="book-image">
-                <img src="${imgSrc}" alt="${book.title}" onerror="this.onerror=null;this.src='assets/images/book1.jpg'" />
+                <img src="${finalImgSrc}" alt="${book.title}" onerror="this.onerror=null;this.src='${getAbsoluteImageUrl('book1.jpg')}'" />
                 ${conditionBadge}
             </div>
             <div class="book-info">
@@ -339,6 +404,12 @@ async function viewBookDetail(bookId) {
         const book = await response.json();
         
         if (!response.ok) {
+            // Thử tìm trong sách mẫu nếu API lỗi
+            const sample = getSampleBooksData().find(b => b.id === bookId);
+            if (sample) {
+                showBookDetailModal(sample);
+                return;
+            }
             showNotification('Không thể tải thông tin sách!', 'error');
             return;
         }
@@ -368,19 +439,21 @@ function showBookDetailModal(book) {
         `).join('')
         : '<p style="text-align: center; color: #7f8c8d;">Chưa có đánh giá nào</p>';
     
+    const detailImgSrc = getAbsoluteImageUrl(book.image_url);
+
     modal.innerHTML = `
         <div class="modal-content book-detail-modal">
             <span class="modal-close" onclick="this.parentElement.parentElement.remove()">&times;</span>
             <div class="book-detail-container">
                 <div class="book-detail-left">
-                    <img src="${book.image_url || 'assets/images/book1.jpg'}" alt="${book.title}" 
-                         onerror="this.src='assets/images/book1.jpg'" class="book-detail-image">
+                    <img src="${detailImgSrc}" alt="${book.title}" 
+                         onerror="this.src='${getAbsoluteImageUrl('book1.jpg')}'" class="book-detail-image">
                     <div class="book-meta">
                         <p><strong>ISBN:</strong> ${book.isbn || 'N/A'}</p>
                         <p><strong>Nhà xuất bản:</strong> ${book.publisher || 'N/A'}</p>
                         <p><strong>Năm xuất bản:</strong> ${book.publish_year || 'N/A'}</p>
                         <p><strong>Tình trạng:</strong> ${book.condition === 'new' ? 'Mới' : 'Cũ'}</p>
-                        <p><strong>Còn lại:</strong> ${book.stock} cuốn</p>
+                        <p><strong>Còn lại:</strong> ${book.stock || 0} cuốn</p>
                     </div>
                 </div>
                 <div class="book-detail-right">
@@ -540,16 +613,6 @@ function applyAdvancedFilter() {
     loadBooks();
 }
 
-function filterCategory(category) {
-    currentFilters.category = category;
-    currentCategory = category;
-    
-    const buttons = document.querySelectorAll('.category-btn');
-    buttons.forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
-    
-    loadBooks();
-}
 
 // ==================== CART ====================
 
@@ -677,8 +740,10 @@ function viewCart() {
 function buyNow(bookId) {
     addToCart(bookId);
     setTimeout(() => {
+        const detailModal = document.querySelector('.book-detail-modal');
+        if (detailModal) detailModal.parentElement.remove();
         checkout();
-    }, 500);
+    }, 50);
 }
 
 // ==================== CHECKOUT ====================
@@ -920,31 +985,6 @@ function getOrderStatusName(status) {
         'cancelled': 'Đã hủy'
     };
     return statuses[status] || status;
-}
-
-// ==================== UTILITY FUNCTIONS ====================
-
-function formatPrice(price) {
-    return price.toLocaleString('vi-VN') + 'đ';
-}
-
-function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `alert alert-${type}`;
-    notification.textContent = message;
-    notification.style.position = 'fixed';
-    notification.style.top = '80px';
-    notification.style.right = '20px';
-    notification.style.zIndex = '9999';
-    notification.style.minWidth = '300px';
-    notification.style.animation = 'slideIn 0.3s';
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-        notification.style.animation = 'fadeOut 0.3s';
-        setTimeout(() => notification.remove(), 300);
-    }, 3000);
 }
 
 // ==================== MODAL FUNCTIONS ====================

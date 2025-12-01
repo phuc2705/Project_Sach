@@ -1,180 +1,351 @@
 const API_BASE = 'http://localhost:5000/api'; // backend API base
 
 document.addEventListener('DOMContentLoaded', () => {
-  setupNav();
-  document.getElementById('btnLogout').addEventListener('click', () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    window.location.href = '../index.html';
-  });
-  loadDashboard();
+    // FIX: Bắt buộc kiểm tra quyền Admin khi vào trang này
+    const user = localStorage.getItem('user');
+    if (!user || JSON.parse(user).role.toLowerCase() !== 'admin') {
+        alert('Bạn không có quyền truy cập trang Admin!');
+        window.location.href = '../index.html';
+        return;
+    }
+
+    setupNav();
+    document.getElementById('btnLogout').addEventListener('click', () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '../index.html';
+    });
+    loadDashboard();
 });
 
 function setupNav(){
-  const links = document.querySelectorAll('.admin-sidebar a');
-  links.forEach(a => a.addEventListener('click', (e)=>{
-    e.preventDefault();
-    links.forEach(x=>x.classList.remove('active'));
-    a.classList.add('active');
-    const view = a.dataset.view;
-    document.querySelectorAll('.view').forEach(v=>v.style.display='none');
-    document.getElementById('view-'+view).style.display = 'block';
-    if(view === 'dashboard') loadDashboard();
-    if(view === 'books') loadBooksAdmin();
-    if(view === 'users') loadUsersAdmin();
-    if(view === 'orders') loadOrdersAdmin();
-  }))
+    const links = document.querySelectorAll('.admin-sidebar a');
+    links.forEach(a => a.addEventListener('click', (e)=>{
+        e.preventDefault();
+        links.forEach(x=>x.classList.remove('active'));
+        a.classList.add('active');
+        const view = a.dataset.view;
+        document.querySelectorAll('.view').forEach(v=>v.style.display='none');
+        document.getElementById('view-'+view).style.display = 'block';
+        if(view === 'dashboard') loadDashboard();
+        if(view === 'books') loadBooksAdmin();
+        if(view === 'users') loadUsersAdmin();
+        if(view === 'orders') loadOrdersAdmin();
+        
+        // Thêm logic khởi tạo cho Form Tạo Thể loại
+        if(view === 'categories') setupCategoryCreation(); 
+    }))
 }
 
-async function loadDashboard(){
-  // Attempt to fetch available stats from backend. If endpoints missing, show fallback messages.
-  try {
-    const booksRes = await fetch(`${API_BASE}/books`);
-    if (booksRes.ok){
-      const booksData = await booksRes.json();
-      const count = Array.isArray(booksData.books) ? booksData.books.length : (booksData.books && booksData.books.length) || '-';
-      document.getElementById('stat-books').textContent = count;
-      const pending = (booksData.books || []).filter(b => b.status === 'pending' || b.status === 'waiting' || b.status === 'chờ duyệt');
-      renderPendingBooks(pending.length ? pending : (booksData.books || []).slice(0,4));
-    } else {
-      document.getElementById('stat-books').textContent = 'N/A';
-      renderPendingBooks([]);
-    }
-  } catch(err){
-    console.warn('Books stat not available', err);
-    document.getElementById('stat-books').textContent = 'N/A';
-    renderPendingBooks([]);
-  }
+// ======================= HÀM TIỆN ÍCH CHUNG =======================
 
-  // Users, orders, revenue - backend endpoints may not exist. Use placeholders.
-  document.getElementById('stat-users').textContent = 'N/A';
-  document.getElementById('stat-orders').textContent = 'N/A';
-  document.getElementById('stat-revenue').textContent = 'N/A';
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `alert alert-${type}`;
+    notification.textContent = message;
+    notification.style.position = 'fixed';
+    notification.style.top = '20px';
+    notification.style.right = '20px';
+    notification.style.zIndex = '9999';
+    notification.style.minWidth = '300px';
+    notification.style.animation = 'slideIn 0.3s';
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.animation = 'fadeOut 0.3s';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+function formatPrice(price) {
+    return price ? price.toLocaleString('vi-VN') + 'đ' : '0đ';
+}
+
+function getAbsoluteImageUrl(url) {
+    // FIX ẢNH: Chuyển tên file thành đường dẫn API Backend
+    if (!url || url.startsWith('http://') || url.startsWith('https://')) return url || '../assets/images/book1.jpg';
+    return `${API_BASE}/uploads/${url.trim()}`;
+}
+
+// Hàm giải quyết đường dẫn ảnh cho các hàm Admin có sẵn
+function resolveBookImage(url){
+    return getAbsoluteImageUrl(url);
+}
+
+// ======================= CHỨC NĂNG TẠO THỂ LOẠI (CATEGORY) =======================
+
+function setupCategoryCreation() {
+    // Đảm bảo Form đã được thêm vào HTML Admin
+    const form = document.getElementById('createCategoryForm');
+    if (form) {
+        // Tách logic submit form ra khỏi listener HTML cơ bản (giống script.js)
+        form.onsubmit = function(e) {
+            e.preventDefault();
+            handleCreateCategory(false); // Gửi form, KHÔNG reset
+        };
+    }
+    
+    // Đăng ký cho nút "Lưu & Tạo thêm"
+    const saveAndAddBtn = document.getElementById('saveAndAddCategoryBtn');
+    if (saveAndAddBtn) {
+        saveAndAddBtn.onclick = function() {
+            handleCreateCategory(true); // Gửi form, CÓ reset
+        };
+    }
+    
+    // Tải lại danh mục cho bảng quản lý
+    loadCategoriesAdmin();
+}
+
+async function handleCreateCategory(resetAfterSave = false) {
+    const token = localStorage.getItem('token');
+    
+    const categoryNameInput = document.getElementById('categoryName');
+    const categoryDescriptionInput = document.getElementById('categoryDescription');
+    const categoryResultDiv = document.getElementById('categoryResult');
+    const newCategoryIdSpan = document.getElementById('newCategoryId');
+    
+    const categoryName = categoryNameInput.value.trim();
+    const description = categoryDescriptionInput.value;
+
+    if (categoryName.length === 0) {
+        showNotification('Tên thể loại không được rỗng!', 'error');
+        return;
+    }
+
+    const categoryData = {
+        category_name: categoryName,
+        description: description
+    };
+    
+    try {
+        const response = await fetch(`${API_BASE}/categories`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` 
+            },
+            body: JSON.stringify(categoryData)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showNotification(data.message, 'success');
+            
+            // Hiển thị Category_ID mới tạo (Hậu điều kiện)
+            newCategoryIdSpan.textContent = data.category_id;
+            categoryResultDiv.style.display = 'block';
+
+            if (resetAfterSave) {
+                // Logic reset form cho nút "Lưu & Tạo thêm"
+                categoryNameInput.value = '';
+                categoryDescriptionInput.value = '';
+                categoryResultDiv.style.display = 'none'; 
+                categoryNameInput.focus();
+            }
+            
+            loadCategoriesAdmin(); // Tải lại bảng danh mục quản lý
+        } else {
+            // Thất bại (Lỗi 400 Validation, 403 Forbidden, 401 Unauthorized)
+            showNotification(data.message || 'Lỗi hệ thống khi tạo thể loại.', 'error');
+        }
+    } catch (error) {
+        console.error('API Error:', error);
+        showNotification('Lỗi kết nối hoặc lỗi hệ thống.', 'error');
+    }
+}
+
+async function loadCategoriesAdmin() {
+    // API GET /api/categories (Không cần token Admin)
+    const el = document.getElementById('categories-list-table');
+    el.innerHTML = 'Đang tải danh mục...';
+    try {
+        const res = await fetch(`${API_BASE}/categories`);
+        if (!res.ok) { el.innerHTML = '<div class="notice">Không thể tải danh mục từ API.</div>'; return; }
+        const data = await res.json();
+        const categories = data.categories || [];
+        
+        let html = '<div class="table-head"><div>ID</div><div>Tên Thể loại</div><div>Hành động</div></div>';
+        
+        categories.forEach(cat => {
+            html += `<div class="category-row">
+                <div>#${cat.id}</div>
+                <div>${cat.name}</div>
+                <div><button class="btn secondary">Sửa</button></div>
+            </div>`;
+        });
+        
+        el.innerHTML = html;
+    } catch(e) {
+        el.innerHTML = `<div class="notice">Lỗi kết nối: ${e.message}</div>`;
+    }
+}
+
+
+// ======================= CÁC HÀM ADMIN KHÁC (KHÔNG ĐỔI) =======================
+
+async function loadDashboard(){
+    try {
+        const booksRes = await fetch(`${API_BASE}/books`);
+        if (booksRes.ok){
+            const booksData = await booksRes.json();
+            const count = Array.isArray(booksData.books) ? booksData.books.length : (booksData.books && booksData.books.length) || 0;
+            document.getElementById('stat-books').textContent = count;
+            // Filter pending books (assuming 'status' field exists in book objects)
+            const pending = (booksData.books || []).filter(b => b.status === 'pending' || b.status === 'waiting' || b.status === 'chờ duyệt');
+            renderPendingBooks(pending.length ? pending : (booksData.books || []).slice(0,4));
+        } else {
+            document.getElementById('stat-books').textContent = 'N/A';
+            renderPendingBooks([]);
+        }
+    } catch(err){
+        console.warn('Books stat not available', err);
+        document.getElementById('stat-books').textContent = 'N/A';
+        renderPendingBooks([]);
+    }
+
+    // Attempt to fetch dedicated admin stats endpoint
+    try {
+        const statsRes = await fetch(`${API_BASE}/admin/stats`, { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') } });
+        const statsData = await statsRes.json();
+        if(statsRes.ok){
+            document.getElementById('stat-users').textContent = statsData.users || 0;
+            document.getElementById('stat-orders').textContent = statsData.orders || 0;
+            document.getElementById('stat-revenue').textContent = formatPrice(statsData.revenue);
+        } else {
+            document.getElementById('stat-users').textContent = 'N/A';
+            document.getElementById('stat-orders').textContent = 'N/A';
+            document.getElementById('stat-revenue').textContent = 'N/A';
+        }
+    } catch (err) {
+        console.warn('Admin stats endpoint failed', err);
+        document.getElementById('stat-users').textContent = 'N/A';
+        document.getElementById('stat-orders').textContent = 'N/A';
+        document.getElementById('stat-revenue').textContent = 'N/A';
+    }
 }
 
 function renderPendingBooks(list){
-  const el = document.getElementById('pending-books');
-  if(!list || list.length === 0){
-    el.innerHTML = '<div class="notice">Không có sách chờ duyệt hoặc backend chưa cung cấp trạng thái. Vui lòng kiểm tra API.</div>';
-    return;
-  }
-  el.innerHTML = '';
-  list.forEach(b => {
-    const row = document.createElement('div');
-    row.className = 'book-row';
-    const img = document.createElement('img');
-    img.src = resolveBookImage(b.image_url);
-    img.onerror = function(){ this.src=resolveBookImage('') };
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.innerHTML = `<strong>${b.title}</strong><div>${b.author || ''}</div>`;
-    const actions = document.createElement('div');
-    const btnApprove = document.createElement('button');
-    btnApprove.className='btn'; btnApprove.textContent='Duyệt';
-    btnApprove.onclick = ()=>approveBook(b.book_id || b.id);
-    const btnReject = document.createElement('button');
-    btnReject.className='btn secondary'; btnReject.textContent='Từ chối';
-    btnReject.onclick = ()=>rejectBook(b.book_id || b.id);
-    actions.appendChild(btnApprove); actions.appendChild(btnReject);
-    row.appendChild(img); row.appendChild(meta); row.appendChild(actions);
-    el.appendChild(row);
-  })
-}
-
-function resolveBookImage(url){
-  // Normalize image url so admin page resolves relative paths correctly
-  if(!url) return '../assets/images/book1.jpg';
-  const trimmed = url.trim();
-  if(trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('//')) return trimmed;
-  if(trimmed.startsWith('/')) return '..' + trimmed; // root-relative
-  // relative path from admin folder -> prefix ../
-  return '../' + trimmed;
+    const el = document.getElementById('pending-books');
+    if(!list || list.length === 0){
+        el.innerHTML = '<div class="notice">Không có sách chờ duyệt hoặc backend chưa cung cấp trạng thái.</div>';
+        return;
+    }
+    el.innerHTML = '';
+    list.forEach(b => {
+        const row = document.createElement('div');
+        row.className = 'book-row';
+        const img = document.createElement('img');
+        img.src = resolveBookImage(b.image_url);
+        img.onerror = function(){ this.src=resolveBookImage('') };
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.innerHTML = `<strong>${b.title}</strong><div>${b.author || ''}</div>`;
+        const actions = document.createElement('div');
+        const btnApprove = document.createElement('button');
+        btnApprove.className='btn'; btnApprove.textContent='Duyệt';
+        btnApprove.onclick = ()=>approveBook(b.book_id || b.id);
+        const btnReject = document.createElement('button');
+        btnReject.className='btn secondary'; btnReject.textContent='Từ chối';
+        btnReject.onclick = ()=>hideBook(b.book_id || b.id); // Dùng hideBook thay cho reject
+        actions.appendChild(btnApprove); actions.appendChild(btnReject);
+        row.appendChild(img); row.appendChild(meta); row.appendChild(actions);
+        el.appendChild(row);
+    })
 }
 
 async function loadBooksAdmin(){
-  const el = document.getElementById('books-table');
-  el.innerHTML = 'Đang tải...';
-  try{
-    const res = await fetch(`${API_BASE}/books`);
-    if(!res.ok) { el.innerHTML = '<div class="notice">Không thể lấy danh sách sách từ API.</div>'; return; }
-    const data = await res.json();
-    const books = data.books || [];
-    if(books.length === 0) { el.innerHTML = '<div class="notice">Không có sách.</div>'; return; }
-    const head = document.createElement('div'); head.className='table-head'; head.innerHTML = '<div style="width:140px">Ảnh</div><div>Thông tin</div><div style="width:220px">Hành động</div>';
-    el.innerHTML=''; el.appendChild(head);
-    books.forEach(b=>{
-      const row = document.createElement('div'); row.className='book-row';
-      const img = document.createElement('img'); img.src = resolveBookImage(b.image_url); img.onerror = function(){ this.src=resolveBookImage('') };
-      const meta = document.createElement('div'); meta.className='meta'; meta.innerHTML=`<strong>${b.title}</strong><div>${b.author||''}</div><div style="color:#9aa6b2">${b.category||''} - ${b.stock||0} sp</div>`;
-      const actions = document.createElement('div'); actions.style.textAlign='right';
-      const approve = document.createElement('button'); approve.className='btn'; approve.textContent='Duyệt'; approve.onclick = ()=>approveBook(b.book_id||b.id);
-      const hide = document.createElement('button'); hide.className='btn secondary'; hide.textContent='Ẩn'; hide.onclick = ()=>hideBook(b.book_id||b.id);
-      actions.appendChild(approve); actions.appendChild(hide);
-      row.appendChild(img); row.appendChild(meta); row.appendChild(actions);
-      el.appendChild(row);
-    })
-  }catch(e){ el.innerHTML = '<div class="notice">Lỗi khi gọi API sách: '+e.message+'</div>' }
+    const el = document.getElementById('books-table');
+    el.innerHTML = 'Đang tải...';
+    try{
+        const res = await fetch(`${API_BASE}/books`);
+        if(!res.ok) { el.innerHTML = '<div class="notice">Không thể lấy danh sách sách từ API.</div>'; return; }
+        const data = await res.json();
+        const books = data.books || [];
+        if(books.length === 0) { el.innerHTML = '<div class="notice">Không có sách.</div>'; return; }
+        const head = document.createElement('div'); head.className='table-head'; head.innerHTML = '<div style="width:140px">Ảnh</div><div>Thông tin</div><div style="width:220px">Hành động</div>';
+        el.innerHTML=''; el.appendChild(head);
+        books.forEach(b=>{
+            const row = document.createElement('div'); row.className='book-row';
+            const img = document.createElement('img'); img.src = resolveBookImage(b.image_url); img.onerror = function(){ this.src=resolveBookImage('') };
+            const meta = document.createElement('div'); meta.className='meta'; meta.innerHTML=`<strong>${b.title}</strong><div>${b.author||''}</div><div style="color:#9aa6b2">${b.category||''} - ${b.stock||0} sp</div>`;
+            const actions = document.createElement('div'); actions.style.textAlign='right';
+            const approve = document.createElement('button'); approve.className='btn'; approve.textContent='Duyệt'; approve.onclick = ()=>approveBook(b.book_id||b.id);
+            const hide = document.createElement('button'); hide.className='btn secondary'; hide.textContent='Ẩn'; hide.onclick = ()=>hideBook(b.book_id||b.id);
+            actions.appendChild(approve); actions.appendChild(hide);
+            row.appendChild(img); row.appendChild(meta); row.appendChild(actions);
+            el.appendChild(row);
+        })
+    }catch(e){ el.innerHTML = '<div class="notice">Lỗi khi gọi API sách: '+e.message+'</div>' }
 }
 
 async function loadUsersAdmin(){
-  const el = document.getElementById('users-table');
-  el.innerHTML = 'Đang tải...';
-  try{
-    const res = await fetch(`${API_BASE}/admin/users`, { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') } });
-    if(!res.ok) {
-      el.innerHTML = `<div class="notice">Không thể lấy danh sách người dùng từ API. Mã: ${res.status}</div>`;
-      return;
-    }
-    const data = await res.json();
-    const users = data.users || [];
-    if(users.length === 0){ el.innerHTML = '<div class="notice">Không có người dùng.</div>'; return; }
-    const head = document.createElement('div'); head.className='table-head'; head.innerHTML = '<div style="width:140px">Tên</div><div>Thông tin</div><div style="width:220px">Hành động</div>';
-    el.innerHTML=''; el.appendChild(head);
-    users.forEach(u=>{
-      const row = document.createElement('div'); row.className='user-row';
-      const meta = document.createElement('div'); meta.className='meta'; meta.innerHTML=`<strong>${u.fullname}</strong><div>${u.email||''}</div><div style="color:#9aa6b2">${u.role||''} - ${u.status||''}</div>`;
-      const actions = document.createElement('div'); actions.style.textAlign='right';
-      const lock = document.createElement('button'); lock.className='btn'; lock.textContent='Khóa'; lock.onclick = async ()=>{
-        if(!confirm('Khóa tài khoản này?')) return; const r = await fetch(`${API_BASE}/admin/users/lock/${u.id}`, { method: 'POST', headers: { 'Authorization':'Bearer '+localStorage.getItem('token') } }); if(r.ok){ alert('Đã khóa'); loadUsersAdmin(); } else alert('Lỗi: '+r.status);
-      };
-      const unlock = document.createElement('button'); unlock.className='btn secondary'; unlock.textContent='Mở khóa'; unlock.onclick = async ()=>{
-        if(!confirm('Mở khóa tài khoản này?')) return; const r = await fetch(`${API_BASE}/admin/users/unlock/${u.id}`, { method: 'POST', headers: { 'Authorization':'Bearer '+localStorage.getItem('token') } }); if(r.ok){ alert('Đã mở khóa'); loadUsersAdmin(); } else alert('Lỗi: '+r.status);
-      };
-      actions.appendChild(lock); actions.appendChild(unlock);
-      row.appendChild(meta); row.appendChild(actions);
-      el.appendChild(row);
-    })
-  }catch(e){ el.innerHTML = '<div class="notice">Lỗi khi gọi API người dùng: '+e.message+'</div>' }
+    const el = document.getElementById('users-table');
+    el.innerHTML = 'Đang tải...';
+    try{
+        const res = await fetch(`${API_BASE}/admin/users`, { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') } });
+        if(!res.ok) {
+            el.innerHTML = `<div class="notice">Không thể lấy danh sách người dùng từ API. Mã: ${res.status}</div>`;
+            return;
+        }
+        const data = await res.json();
+        const users = data.users || [];
+        if(users.length === 0){ el.innerHTML = '<div class="notice">Không có người dùng.</div>'; return; }
+        const head = document.createElement('div'); head.className='table-head'; head.innerHTML = '<div style="width:140px">Tên</div><div>Thông tin</div><div style="width:220px">Hành động</div>';
+        el.innerHTML=''; el.appendChild(head);
+        users.forEach(u=>{
+            const row = document.createElement('div'); row.className='user-row';
+            const meta = document.createElement('div'); meta.className='meta'; meta.innerHTML=`<strong>${u.fullname}</strong><div>${u.email||''}</div><div style="color:#9aa6b2">${u.role||''} - ${u.status||''}</div>`;
+            const actions = document.createElement('div'); actions.style.textAlign='right';
+            const lock = document.createElement('button'); lock.className='btn'; lock.textContent='Khóa'; lock.onclick = async ()=>{
+                if(!confirm('Khóa tài khoản này?')) return; const r = await fetch(`${API_BASE}/admin/users/lock/${u.id}`, { method: 'POST', headers: { 'Authorization':'Bearer '+localStorage.getItem('token') } }); if(r.ok){ alert('Đã khóa'); loadUsersAdmin(); } else alert('Lỗi: '+r.status);
+            };
+            const unlock = document.createElement('button'); unlock.className='btn secondary'; unlock.textContent='Mở khóa'; unlock.onclick = async ()=>{
+                if(!confirm('Mở khóa tài khoản này?')) return; const r = await fetch(`${API_BASE}/admin/users/unlock/${u.id}`, { method: 'POST', headers: { 'Authorization':'Bearer '+localStorage.getItem('token') } }); if(r.ok){ alert('Đã mở khóa'); loadUsersAdmin(); } else alert('Lỗi: '+r.status);
+            };
+            actions.appendChild(lock); actions.appendChild(unlock);
+            row.appendChild(meta); row.appendChild(actions);
+            el.appendChild(row);
+        })
+    }catch(e){ el.innerHTML = '<div class="notice">Lỗi khi gọi API người dùng: '+e.message+'</div>' }
 }
 
 async function loadOrdersAdmin(){
-  const el = document.getElementById('orders-table');
-  el.innerHTML = 'Đang tải...';
-  try{
-    const res = await fetch(`${API_BASE}/admin/orders`, { headers: { 'Authorization':'Bearer '+localStorage.getItem('token') } });
-    if(!res.ok){ el.innerHTML = `<div class="notice">Không thể lấy danh sách đơn hàng từ API. Mã: ${res.status}</div>`; return; }
-    const data = await res.json();
-    const orders = data.orders || [];
-    if(orders.length === 0){ el.innerHTML = '<div class="notice">Không có đơn hàng.</div>'; return; }
-    const head = document.createElement('div'); head.className='table-head'; head.innerHTML = '<div>Order ID</div><div>Thông tin</div><div style="width:220px">Trạng thái</div>';
-    el.innerHTML = ''; el.appendChild(head);
-    orders.forEach(o=>{
-      const row = document.createElement('div'); row.className='order-row';
-      const info = document.createElement('div'); info.className='meta'; info.innerHTML = `<strong>Order #${o.order_id}</strong><div>Buyer: ${o.buyer_id}</div><div style="color:#9aa6b2">${o.created_at||''}</div>`;
-      const status = document.createElement('div'); status.style.textAlign='right'; status.innerHTML = `<div>${o.status}</div><div style="font-weight:bold">${o.total_amount||0}</div>`;
-      row.appendChild(info); row.appendChild(status); el.appendChild(row);
-    })
-  }catch(e){ el.innerHTML = '<div class="notice">Lỗi khi gọi API đơn hàng: '+e.message+'</div>' }
+    const el = document.getElementById('orders-table');
+    el.innerHTML = 'Đang tải...';
+    try{
+        const res = await fetch(`${API_BASE}/admin/orders`, { headers: { 'Authorization':'Bearer '+localStorage.getItem('token') } });
+        if(!res.ok){ el.innerHTML = `<div class="notice">Không thể lấy danh sách đơn hàng từ API. Mã: ${res.status}</div>`; return; }
+        const data = await res.json();
+        const orders = data.orders || [];
+        if(orders.length === 0){ el.innerHTML = '<div class="notice">Không có đơn hàng.</div>'; return; }
+        const head = document.createElement('div'); head.className='table-head'; head.innerHTML = '<div>Order ID</div><div>Thông tin</div><div style="width:220px">Trạng thái</div>';
+        el.innerHTML = ''; el.appendChild(head);
+        orders.forEach(o=>{
+            const row = document.createElement('div'); row.className='order-row';
+            const info = document.createElement('div'); info.className='meta'; info.innerHTML = `<strong>Order #${o.order_id}</strong><div>Buyer: ${o.buyer_id}</div><div style="color:#9aa6b2">${o.created_at||''}</div>`;
+            const status = document.createElement('div'); status.style.textAlign='right'; status.innerHTML = `<div>${o.status}</div><div style="font-weight:bold">${o.total_amount||0}</div>`;
+            row.appendChild(info); row.appendChild(status); el.appendChild(row);
+        })
+    }catch(e){ el.innerHTML = '<div class="notice">Lỗi khi gọi API đơn hàng: '+e.message+'</div>' }
 }
 
-// Placeholder admin actions - will call endpoints when implemented
+// Hàm Duyệt Sách
 async function approveBook(bookId){
-  if(!confirm('Bạn có chắc muốn duyệt sách này?')) return;
-  // try to call admin API
-  try{
-  const res = await fetch(`${API_BASE}/admin/books/approve/${bookId}`, { method: 'POST', headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+localStorage.getItem('token') } });
-    if(res.ok) { alert('Duyệt thành công'); loadBooksAdmin(); } else { alert('API chưa hỗ trợ hoặc lỗi: '+res.status); }
-  }catch(e){ alert('Không thể gọi endpoint duyệt sách: '+e.message); }
+    if(!confirm('Bạn có chắc muốn duyệt sách này?')) return;
+    try{
+    const res = await fetch(`${API_BASE}/admin/books/approve/${bookId}`, { method: 'POST', headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+localStorage.getItem('token') } });
+        if(res.ok) { alert('Duyệt thành công'); loadBooksAdmin(); } else { alert('API chưa hỗ trợ hoặc lỗi: '+res.status); }
+    }catch(e){ alert('Không thể gọi endpoint duyệt sách: '+e.message); }
 }
-async function rejectBook(bookId){ alert('Chức năng từ chối sách cần endpoint backend.'); }
-async function hideBook(bookId){ alert('Chức năng Ẩn sách cần endpoint backend.'); }
+
+// Hàm Ẩn Sách (Thay thế cho Reject)
+async function hideBook(bookId){ 
+    if(!confirm('Bạn có chắc muốn ẩn/từ chối sách này?')) return;
+    try{
+    const res = await fetch(`${API_BASE}/admin/books/hide/${bookId}`, { method: 'POST', headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+localStorage.getItem('token') } });
+        if(res.ok) { alert('Đã ẩn sách'); loadBooksAdmin(); } else { alert('API chưa hỗ trợ hoặc lỗi: '+res.status); }
+    }catch(e){ alert('Không thể gọi endpoint ẩn sách: '+e.message); }
+}

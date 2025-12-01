@@ -1,41 +1,49 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import pyodbc
 import hashlib
 import jwt
 import datetime
 from functools import wraps
+import os
+from config import Config 
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-here-change-in-production'
+# Đã tải cấu hình từ config.py
+app.config.from_object(Config) 
 CORS(app)
+
+# Thiết lập thư mục chứa file ảnh được upload
+UPLOAD_DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 
 # ==================== DATABASE CONNECTION ====================
 
 def get_db_connection():
-    """Kết nối đến SQL Server"""
+    """Kết nối đến SQL Server (Sử dụng tên Server cứng để đảm bảo hoạt động)"""
     try:
         conn = pyodbc.connect(
             'DRIVER={SQL Server};'
-            'SERVER=PHUCDEPTRAI\\PHUCNGUYENTRONG;'
+            'SERVER=PHUCDEPTRAI\\PHUCNGUYENTRONG;' 
             'DATABASE=BookStoreDBO;'
             'Trusted_Connection=yes;'
         )
+        conn.autocommit = False # Tắt autocommit để quản lý transaction bằng commit/rollback
         return conn
     except Exception as e:
-        print(f"Database connection error: {e}")
+        print(f"Database connection error: {e}") 
         return None
 
 # ==================== AUTHENTICATION DECORATOR ====================
 
 def token_required(f):
-    """Decorator để kiểm tra JWT token"""
+    """Decorator: Kiểm tra JWT token hợp lệ"""
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        
         if 'Authorization' in request.headers:
-            token = request.headers['Authorization'].split(' ')[1]
+            parts = request.headers['Authorization'].split(' ')
+            if len(parts) == 2 and parts[0].lower() == 'bearer':
+                token = parts[1]
         
         if not token:
             return jsonify({'message': 'Token is missing!'}), 401
@@ -47,17 +55,16 @@ def token_required(f):
             return jsonify({'message': 'Token is invalid!'}), 401
         
         return f(current_user_id, *args, **kwargs)
-    
     return decorated
 
 def admin_required(f):
-    """Decorator để kiểm tra JWT token và quyền admin"""
+    """Decorator: Kiểm tra JWT token và quyền ADMIN"""
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
         if 'Authorization' in request.headers:
             parts = request.headers['Authorization'].split(' ')
-            if len(parts) == 2:
+            if len(parts) == 2 and parts[0].lower() == 'bearer':
                 token = parts[1]
 
         if not token:
@@ -77,40 +84,44 @@ def admin_required(f):
         try:
             cursor.execute("SELECT role, status FROM Users WHERE user_id = ?", (current_user_id,))
             row = cursor.fetchone()
-            if not row:
-                return jsonify({'message': 'Người dùng không tồn tại!'}), 404
-            role, status = row[0], row[1]
-            if status != 'active':
-                return jsonify({'message': 'Tài khoản không hoạt động!'}), 403
-            if not role or role.lower() != 'admin':
+            if not row or row[1] != 'active' or row[0].lower() != 'admin':
                 return jsonify({'message': 'Yêu cầu quyền admin!'}), 403
         finally:
-            cursor.close()
-            conn.close()
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
         return f(current_user_id, *args, **kwargs)
-
     return decorated
 
 # ==================== UTILITY FUNCTIONS ====================
-
 def hash_password(password):
-    """Hash password bằng SHA256"""
     return hashlib.sha256(password.encode()).hexdigest()
 
 def generate_token(user_id):
-    """Tạo JWT token"""
     token = jwt.encode({
         'user_id': user_id,
         'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
     }, app.config['SECRET_KEY'], algorithm="HS256")
     return token
 
+# ==================== STATIC FILE ROUTE ====================
+
+@app.route('/api/uploads/<path:filename>')
+def uploaded_file(filename):
+    if not os.path.isdir(UPLOAD_DIRECTORY):
+        os.makedirs(UPLOAD_DIRECTORY)
+        
+    return send_from_directory(UPLOAD_DIRECTORY, filename)
+
 # ==================== AUTHENTICATION ROUTES ====================
 
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     """Đăng ký tài khoản mới"""
+    conn = None
+    cursor = None
     try:
         data = request.get_json()
         fullname = data.get('fullname')
@@ -138,18 +149,25 @@ def register():
         """, (fullname, email, phone, hashed_password))
         
         conn.commit()
-        cursor.close()
-        conn.close()
         
         return jsonify({'message': 'Đăng ký thành công!'}), 201
         
     except Exception as e:
         print(f"Register error: {e}")
+        if conn and not conn.autocommit:
+            conn.rollback()
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     """Đăng nhập"""
+    conn = None
+    cursor = None
     try:
         data = request.get_json()
         email = data.get('email')
@@ -172,8 +190,6 @@ def login():
         """, (email, hashed_password))
         
         user = cursor.fetchone()
-        cursor.close()
-        conn.close()
         
         if not user:
             return jsonify({'message': 'Email hoặc mật khẩu không đúng!'}), 401
@@ -198,12 +214,19 @@ def login():
     except Exception as e:
         print(f"Login error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
-# ==================== BOOK ROUTES ====================
+# ==================== BOOK ROUTES (KHÔNG ĐỔI) ====================
 
 @app.route('/api/books', methods=['GET'])
 def get_books():
     """Lấy danh sách sách với tìm kiếm và lọc nâng cao"""
+    conn = None
+    cursor = None
     try:
         # Lấy parameters
         category = request.args.get('category')
@@ -212,8 +235,8 @@ def get_books():
         author = request.args.get('author')
         min_price = request.args.get('min_price')
         max_price = request.args.get('max_price')
-        condition = request.args.get('condition')  # new/used
-        sort_by = request.args.get('sort_by', 'created_at')  # price_asc, price_desc, rating, name
+        condition = request.args.get('condition')
+        sort_by = request.args.get('sort_by', 'created_at')
         
         conn = get_db_connection()
         if not conn:
@@ -232,7 +255,6 @@ def get_books():
         
         params = []
         
-        # Tìm kiếm theo tên hoặc ISBN hoặc tác giả
         if search:
             query += " AND (b.title LIKE ? OR b.author LIKE ? OR b.isbn LIKE ?)"
             params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
@@ -249,7 +271,6 @@ def get_books():
             query += " AND c.category_name = ?"
             params.append(category)
         
-        # Lọc theo giá
         if min_price:
             query += " AND b.price >= ?"
             params.append(float(min_price))
@@ -258,12 +279,10 @@ def get_books():
             query += " AND b.price <= ?"
             params.append(float(max_price))
         
-        # Lọc theo tình trạng
         if condition:
             query += " AND b.condition = ?"
             params.append(condition)
         
-        # Sắp xếp
         if sort_by == 'price_asc':
             query += " ORDER BY b.price ASC"
         elif sort_by == 'price_desc':
@@ -297,18 +316,22 @@ def get_books():
                 'publish_year': book[13] if len(book) > 13 else None
             })
         
-        cursor.close()
-        conn.close()
-        
         return jsonify({'books': books_list}), 200
         
     except Exception as e:
         print(f"Get books error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/books/<int:book_id>', methods=['GET'])
 def get_book_detail(book_id):
     """Lấy chi tiết sách với reviews"""
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
@@ -316,7 +339,6 @@ def get_book_detail(book_id):
         
         cursor = conn.cursor()
         
-        # Lấy thông tin sách
         cursor.execute("""
             SELECT b.book_id, b.title, b.author, b.price, b.old_price,
                    b.description, b.stock, b.rating, b.image_url, 
@@ -364,26 +386,30 @@ def get_book_detail(book_id):
             'image_url': book[8],
             'category': book[9],
             'seller_name': book[10],
-            'isbn': book[11],
-            'condition': book[12],
-            'publisher': book[13],
-            'publish_year': book[14],
+            'isbn': book[11] if len(book) > 11 else None,
+            'condition': book[12] if len(book) > 12 else 'new',
+            'publisher': book[13] if len(book) > 13 else None,
+            'publish_year': book[14] if len(book) > 14 else None,
             'reviews': reviews_list
         }
-        
-        cursor.close()
-        conn.close()
         
         return jsonify(book_detail), 200
         
     except Exception as e:
         print(f"Get book detail error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/books/<int:book_id>/review', methods=['POST'])
 @token_required
 def add_review(current_user_id, book_id):
     """Thêm đánh giá sách"""
+    conn = None
+    cursor = None
     try:
         data = request.get_json()
         rating = data.get('rating')
@@ -411,21 +437,28 @@ def add_review(current_user_id, book_id):
         """, (book_id, book_id))
         
         conn.commit()
-        cursor.close()
-        conn.close()
         
         return jsonify({'message': 'Đánh giá thành công!'}), 201
         
     except Exception as e:
         print(f"Add review error: {e}")
+        if conn and not conn.autocommit:
+            conn.rollback()
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
-# ==================== ORDER ROUTES ====================
+# ==================== ORDER ROUTES (KHÔNG ĐỔI) ====================
 
 @app.route('/api/orders', methods=['POST'])
 @token_required
 def create_order(current_user_id):
     """Tạo đơn hàng mới với thông tin chi tiết"""
+    conn = None
+    cursor = None
     try:
         data = request.get_json()
         items = data.get('items')
@@ -456,20 +489,18 @@ def create_order(current_user_id):
         # Thêm order details
         for item in items:
             cursor.execute("""
-                INSERT INTO OrderDetails (order_id, book_id, quantity, price)
-                VALUES (?, ?, ?, ?)
-            """, (order_id, item['book_id'], item['quantity'], item['price']))
-            
-            # Cập nhật stock
-            cursor.execute("""
                 UPDATE Books
                 SET stock = stock - ?
                 WHERE book_id = ?
             """, (item['quantity'], item['book_id']))
+            
+            cursor.execute("""
+                INSERT INTO OrderDetails (order_id, book_id, quantity, price)
+                VALUES (?, ?, ?, ?)
+            """, (order_id, item['book_id'], item['quantity'], item['price']))
+            
         
         conn.commit()
-        cursor.close()
-        conn.close()
         
         return jsonify({
             'message': 'Đặt hàng thành công!',
@@ -477,13 +508,22 @@ def create_order(current_user_id):
         }), 201
         
     except Exception as e:
+        if conn and not conn.autocommit:
+            conn.rollback()
         print(f"Create order error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/orders/user', methods=['GET'])
 @token_required
 def get_user_orders(current_user_id):
     """Lấy danh sách đơn hàng của user"""
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
@@ -512,20 +552,24 @@ def get_user_orders(current_user_id):
                 'created_at': order[6].strftime('%Y-%m-%d %H:%M:%S') if order[6] else None
             })
         
-        cursor.close()
-        conn.close()
-        
         return jsonify({'orders': orders_list}), 200
         
     except Exception as e:
         print(f"Get user orders error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
-# ==================== CATEGORY ROUTES ====================
+# ==================== CATEGORY ROUTES (KHÔI PHỤC VÀ HOÀN THIỆN TẠO THỂ LOẠI) ====================
 
 @app.route('/api/categories', methods=['GET'])
 def get_categories():
     """Lấy danh sách danh mục"""
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
@@ -542,20 +586,84 @@ def get_categories():
                 'name': cat[1]
             })
         
-        cursor.close()
-        conn.close()
-        
         return jsonify({'categories': categories_list}), 200
         
     except Exception as e:
         print(f"Get categories error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
-# ==================== ADMIN ENDPOINTS ====================
+@app.route('/api/categories', methods=['POST'])
+@admin_required
+def create_category(current_user_id):
+    """CHỨC NĂNG TẠO THỂ LOẠI MỚI: Chỉ Admin có thể thêm vào CSDL với Mô tả"""
+    conn = None
+    cursor = None
+    try:
+        data = request.get_json()
+        category_name = data.get('category_name')
+        description = data.get('description', '')
+
+        # Tiền điều kiện: Kiểm tra Category_Name (ràng buộc bắt buộc và giới hạn ký tự)
+        if not category_name or len(category_name.strip()) == 0 or len(category_name) > 100:
+            return jsonify({'message': 'Tên thể loại không hợp lệ (không được rỗng, tối đa 100 ký tự).'}), 400
+        
+        # Tiền điều kiện: Kiểm tra Description
+        if len(description) > 1000:
+            return jsonify({'message': 'Mô tả quá dài (tối đa 1000 ký tự).'}), 400
+
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'message': 'Không thể kết nối database!'}), 500
+
+        cursor = conn.cursor()
+
+        # Kiểm tra trùng lặp (Category_Name)
+        cursor.execute("SELECT category_id FROM Categories WHERE category_name = ?", (category_name.strip(),))
+        if cursor.fetchone():
+            return jsonify({'message': 'Thể loại đã tồn tại. Vui lòng chọn tên khác!'}), 400
+
+        # INSERT vào bảng Categories và lấy ID mới tạo (OUTPUT INSERTED)
+        # Giả định bảng Categories có cột description
+        cursor.execute("""
+            INSERT INTO Categories (category_name, description, created_at)
+            OUTPUT INSERTED.category_id
+            VALUES (?, ?, GETDATE())
+        """, (category_name.strip(), description))
+
+        new_id = cursor.fetchone()[0]
+        
+        conn.commit()
+
+        # Hậu điều kiện: Trả về ID mới tạo và thông báo thành công
+        return jsonify({
+            'message': f'Thêm thể loại "{category_name}" thành công!',
+            'category_id': new_id
+        }), 201
+
+    except Exception as e:
+        print(f"Create category error: {e}")
+        if conn and not conn.autocommit:
+            conn.rollback() # Hoàn tác giao dịch nếu có lỗi
+        return jsonify({'message': 'Có lỗi xảy ra khi tạo thể loại (Lỗi hệ thống).'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+# ==================== ADMIN ENDPOINTS (KHÔNG ĐỔI) ====================
+# ... (Các route Admin khác giữ nguyên)
 
 @app.route('/api/admin/stats', methods=['GET'])
 @admin_required
 def admin_stats(current_user_id):
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
@@ -571,9 +679,6 @@ def admin_stats(current_user_id):
         cursor.execute("SELECT ISNULL(SUM(total_amount),0) FROM Orders")
         revenue = cursor.fetchone()[0]
 
-        cursor.close()
-        conn.close()
-
         return jsonify({
             'users': users_count,
             'books': books_count,
@@ -584,10 +689,17 @@ def admin_stats(current_user_id):
     except Exception as e:
         print(f"Admin stats error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/admin/users', methods=['GET'])
 @admin_required
 def admin_list_users(current_user_id):
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
@@ -600,16 +712,21 @@ def admin_list_users(current_user_id):
             users.append({
                 'id': r[0], 'fullname': r[1], 'email': r[2], 'phone': r[3], 'role': r[4], 'status': r[5], 'created_at': r[6].strftime('%Y-%m-%d %H:%M:%S') if r[6] else None
             })
-        cursor.close()
-        conn.close()
         return jsonify({'users': users}), 200
     except Exception as e:
         print(f"Admin list users error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/admin/users/lock/<int:user_id>', methods=['POST'])
 @admin_required
 def admin_lock_user(current_user_id, user_id):
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
@@ -617,16 +734,23 @@ def admin_lock_user(current_user_id, user_id):
         cursor = conn.cursor()
         cursor.execute("UPDATE Users SET status = 'locked' WHERE user_id = ?", (user_id,))
         conn.commit()
-        cursor.close()
-        conn.close()
         return jsonify({'message': 'User locked'}), 200
     except Exception as e:
         print(f"Lock user error: {e}")
+        if conn and not conn.autocommit:
+            conn.rollback()
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/admin/users/unlock/<int:user_id>', methods=['POST'])
 @admin_required
 def admin_unlock_user(current_user_id, user_id):
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
@@ -634,16 +758,23 @@ def admin_unlock_user(current_user_id, user_id):
         cursor = conn.cursor()
         cursor.execute("UPDATE Users SET status = 'active' WHERE user_id = ?", (user_id,))
         conn.commit()
-        cursor.close()
-        conn.close()
         return jsonify({'message': 'User unlocked'}), 200
     except Exception as e:
         print(f"Unlock user error: {e}")
+        if conn and not conn.autocommit:
+            conn.rollback()
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/admin/orders', methods=['GET'])
 @admin_required
 def admin_list_orders(current_user_id):
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
@@ -654,16 +785,21 @@ def admin_list_orders(current_user_id):
         orders = []
         for r in rows:
             orders.append({'order_id': r[0], 'buyer_id': r[1], 'total_amount': r[2], 'status': r[3], 'created_at': r[4].strftime('%Y-%m-%d %H:%M:%S') if r[4] else None})
-        cursor.close()
-        conn.close()
         return jsonify({'orders': orders}), 200
     except Exception as e:
         print(f"Admin list orders error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/admin/books/approve/<int:book_id>', methods=['POST'])
 @admin_required
 def admin_approve_book(current_user_id, book_id):
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
@@ -671,16 +807,23 @@ def admin_approve_book(current_user_id, book_id):
         cursor = conn.cursor()
         cursor.execute("UPDATE Books SET status = 'approved' WHERE book_id = ?", (book_id,))
         conn.commit()
-        cursor.close()
-        conn.close()
         return jsonify({'message': 'Book approved'}), 200
     except Exception as e:
         print(f"Approve book error: {e}")
+        if conn and not conn.autocommit:
+            conn.rollback()
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/admin/books/hide/<int:book_id>', methods=['POST'])
 @admin_required
 def admin_hide_book(current_user_id, book_id):
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
@@ -688,14 +831,21 @@ def admin_hide_book(current_user_id, book_id):
         cursor = conn.cursor()
         cursor.execute("UPDATE Books SET status = 'hidden' WHERE book_id = ?", (book_id,))
         conn.commit()
-        cursor.close()
-        conn.close()
         return jsonify({'message': 'Book hidden'}), 200
     except Exception as e:
         print(f"Hide book error: {e}")
+        if conn and not conn.autocommit:
+            conn.rollback()
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 # ==================== MAIN ====================
 
 if __name__ == '__main__':
+    if not os.path.exists(UPLOAD_DIRECTORY):
+        os.makedirs(UPLOAD_DIRECTORY)
     app.run(debug=True, host='0.0.0.0', port=5000)

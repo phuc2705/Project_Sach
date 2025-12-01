@@ -1,86 +1,119 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Admin Dashboard - BookStore</title>
-  <link rel="stylesheet" href="css/admin.css">
-</head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Admin Dashboard - BookStore</title>
+    <link rel="stylesheet" href="css/admin.css">
+    </head>
 <body>
-  <header class="admin-header">
-    <div class="container">
-      <h1>BookStore Admin</h1>
-      <div class="admin-actions">
-        <button id="btnLogout">Đăng xuất</button>
-      </div>
+    <header class="admin-header">
+        <div class="container">
+            <h1>BookStore Admin</h1>
+            <div class="admin-actions">
+                <button id="btnLogout">Đăng xuất</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="admin-main">
+        <aside class="admin-sidebar">
+            <nav>
+                <ul>
+                    <li><a href="#" data-view="dashboard" class="active">Dashboard</a></li>
+                    <li><a href="#" data-view="books">Quản lý Sách</a></li>
+                    <li><a href="#" data-view="categories">Quản lý Thể loại</a></li> <li><a href="#" data-view="users">Quản lý Người dùng</a></li>
+                    <li><a href="#" data-view="orders">Quản lý Đơn hàng</a></li>
+                    <li><a href="#" data-view="reports">Báo cáo</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <section class="admin-content">
+            <div id="view-dashboard" class="view">
+                <h2>Dashboard</h2>
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-users">-</div>
+                        <div class="stat-label">Người dùng</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-books">-</div>
+                        <div class="stat-label">Sách</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-orders">-</div>
+                        <div class="stat-label">Đơn hàng</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="stat-revenue">-</div>
+                        <div class="stat-label">Doanh thu</div>
+                    </div>
+                </div>
+
+                <div class="recent">
+                    <h3>Gần đây - Sách chờ duyệt</h3>
+                    <div id="pending-books"></div>
+                </div>
+            </div>
+
+            <div id="view-books" class="view" style="display:none">
+                <h2>Quản lý Sách</h2>
+                <div id="books-table"></div>
+            </div>
+
+            <div id="view-categories" class="view" style="display:none">
+                <h2>Quản lý Thể loại</h2>
+                
+                <div class="form-container" style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px;">
+                    <h3>Tạo Thể loại Mới</h3>
+                    <form id="createCategoryForm">
+                        <div class="form-group">
+                            <label>Tên Thể loại (Category_Name)</label>
+                            <input type="text" id="categoryName" name="category_name" maxlength="100" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Mô tả (Description) (Tùy chọn)</label>
+                            <textarea id="categoryDescription" name="description" rows="3" maxlength="1000"></textarea>
+                        </div>
+                        
+                        <div id="categoryResult" style="margin-top: 10px; padding: 10px; background: #e0f7e0; border: 1px solid #c8e6c9; border-radius: 4px; display: none;">
+                            <p>Thành công! ID Mới Tạo: <strong id="newCategoryId">N/A</strong></p>
+                        </div>
+
+                        <button type="submit" class="btn" style="background: #27ae60;">
+                            Lưu
+                        </button>
+                        <button type="button" id="saveAndAddCategoryBtn" class="btn secondary" style="background: #3498db; margin-left: 10px;">
+                            Lưu & Tạo thêm
+                        </button>
+                    </form>
+                </div>
+                
+                <h3>Danh sách Thể loại Hiện có</h3>
+                <div id="categories-list-table">
+                    </div>
+            </div>
+
+            <div id="view-users" class="view" style="display:none">
+                <h2>Quản lý Người dùng</h2>
+                <div id="users-table"></div>
+            </div>
+
+            <div id="view-orders" class="view" style="display:none">
+                <h2>Quản lý Đơn hàng</h2>
+                <div id="orders-table"></div>
+            </div>
+
+            <div id="view-reports" class="view" style="display:none">
+                <h2>Báo cáo</h2>
+                <div id="reports-area">
+                    <p>Chưa có số liệu - cần endpoint thống kê ở backend.</p>
+                </div>
+            </div>
+        </section>
     </div>
-  </header>
 
-  <div class="admin-main">
-    <aside class="admin-sidebar">
-      <nav>
-        <ul>
-          <li><a href="#" data-view="dashboard" class="active">Dashboard</a></li>
-          <li><a href="#" data-view="books">Quản lý Sách</a></li>
-          <li><a href="#" data-view="users">Quản lý Người dùng</a></li>
-          <li><a href="#" data-view="orders">Quản lý Đơn hàng</a></li>
-          <li><a href="#" data-view="reports">Báo cáo</a></li>
-        </ul>
-      </nav>
-    </aside>
-
-    <section class="admin-content">
-      <div id="view-dashboard" class="view">
-        <h2>Dashboard</h2>
-        <div class="stats">
-          <div class="stat-card">
-            <div class="stat-value" id="stat-users">-</div>
-            <div class="stat-label">Người dùng</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="stat-books">-</div>
-            <div class="stat-label">Sách</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="stat-orders">-</div>
-            <div class="stat-label">Đơn hàng</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="stat-revenue">-</div>
-            <div class="stat-label">Doanh thu</div>
-          </div>
-        </div>
-
-        <div class="recent">
-          <h3>Gần đây - Sách chờ duyệt</h3>
-          <div id="pending-books"></div>
-        </div>
-      </div>
-
-      <div id="view-books" class="view" style="display:none">
-        <h2>Quản lý Sách</h2>
-        <div id="books-table"></div>
-      </div>
-
-      <div id="view-users" class="view" style="display:none">
-        <h2>Quản lý Người dùng</h2>
-        <div id="users-table"></div>
-      </div>
-
-      <div id="view-orders" class="view" style="display:none">
-        <h2>Quản lý Đơn hàng</h2>
-        <div id="orders-table"></div>
-      </div>
-
-      <div id="view-reports" class="view" style="display:none">
-        <h2>Báo cáo</h2>
-        <div id="reports-area">
-          <p>Chưa có số liệu - cần endpoint thống kê ở backend.</p>
-        </div>
-      </div>
-    </section>
-  </div>
-
-  <script src="js/admin.js"></script>
+    <script src="js/admin.js"></script>
 </body>
 </html>

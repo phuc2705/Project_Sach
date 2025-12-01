@@ -164,7 +164,7 @@ def main():
     cursor = conn.cursor()
     
     # Tạo category "Kinh dị" nếu chưa có
-    cursor.execute("SELECT category_id FROM Categories WHERE category_name = ?", ('Kinh Dị',))
+    cursor.execute("SELECT category_id FROM Categories WHERE category_name = ?", ('kinhdi',))
     category = cursor.fetchone()
     
     if not category:

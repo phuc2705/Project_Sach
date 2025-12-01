@@ -1,41 +1,4 @@
-const API_BASE = 'http://localhost:5000/api'; // backend API base
-
-document.addEventListener('DOMContentLoaded', () => {
-    // FIX: Bắt buộc kiểm tra quyền Admin khi vào trang này
-    const user = localStorage.getItem('user');
-    if (!user || JSON.parse(user).role.toLowerCase() !== 'admin') {
-        alert('Bạn không có quyền truy cập trang Admin!');
-        window.location.href = '../index.html';
-        return;
-    }
-
-    setupNav();
-    document.getElementById('btnLogout').addEventListener('click', () => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.href = '../index.html';
-    });
-    loadDashboard();
-});
-
-function setupNav(){
-    const links = document.querySelectorAll('.admin-sidebar a');
-    links.forEach(a => a.addEventListener('click', (e)=>{
-        e.preventDefault();
-        links.forEach(x=>x.classList.remove('active'));
-        a.classList.add('active');
-        const view = a.dataset.view;
-        document.querySelectorAll('.view').forEach(v=>v.style.display='none');
-        document.getElementById('view-'+view).style.display = 'block';
-        if(view === 'dashboard') loadDashboard();
-        if(view === 'books') loadBooksAdmin();
-        if(view === 'users') loadUsersAdmin();
-        if(view === 'orders') loadOrdersAdmin();
-        
-        // Thêm logic khởi tạo cho Form Tạo Thể loại
-        if(view === 'categories') setupCategoryCreation(); 
-    }))
-}
+const API_BASE = 'http://localhost:5000/api'; // Backend API base
 
 // ======================= HÀM TIỆN ÍCH CHUNG =======================
 
@@ -62,41 +25,77 @@ function formatPrice(price) {
     return price ? price.toLocaleString('vi-VN') + 'đ' : '0đ';
 }
 
-function getAbsoluteImageUrl(url) {
-    // FIX ẢNH: Chuyển tên file thành đường dẫn API Backend
-    if (!url || url.startsWith('http://') || url.startsWith('https://')) return url || '../assets/images/book1.jpg';
-    return `${API_BASE}/uploads/${url.trim()}`;
-}
-
-// Hàm giải quyết đường dẫn ảnh cho các hàm Admin có sẵn
 function resolveBookImage(url){
-    return getAbsoluteImageUrl(url);
+    if (!url || url.startsWith('http://') || url.startsWith('https://')) return url || '../assets/images/book1.jpg';
+    return `${API_BASE}/uploads/${url.trim()}`; 
 }
 
-// ======================= CHỨC NĂNG TẠO THỂ LOẠI (CATEGORY) =======================
+function getOrderStatusName(status) {
+    const statuses = {
+        'pending': 'Chờ xác nhận',
+        'confirmed': 'Đã xác nhận',
+        'shipping': 'Đang giao',
+        'delivered': 'Đã giao',
+        'cancelled': 'Đã hủy',
+        'returned': 'Đã hoàn trả' 
+    };
+    return statuses[status] || status;
+}
 
-function setupCategoryCreation() {
-    // Đảm bảo Form đã được thêm vào HTML Admin
-    const form = document.getElementById('createCategoryForm');
-    if (form) {
-        // Tách logic submit form ra khỏi listener HTML cơ bản (giống script.js)
-        form.onsubmit = function(e) {
+// ======================= KHỞI TẠO VÀ ĐIỀU HƯỚNG =======================
+
+document.addEventListener('DOMContentLoaded', () => {
+    const user = localStorage.getItem('user');
+    if (!user || JSON.parse(user).role.toLowerCase() !== 'admin') {
+        alert('Bạn không có quyền truy cập trang Admin!');
+        window.location.href = '../index.html';
+        return;
+    }
+
+    setupNav();
+    document.getElementById('btnLogout').addEventListener('click', () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '../index.html';
+    });
+    
+    loadDashboard(); 
+    
+    // Đăng ký event listener cho form tạo thể loại
+    const createCategoryForm = document.getElementById('createCategoryForm');
+    if (createCategoryForm) {
+        createCategoryForm.addEventListener('submit', function(e) {
             e.preventDefault();
-            handleCreateCategory(false); // Gửi form, KHÔNG reset
-        };
+            handleCreateCategory(false);
+        });
+        const saveAndAddBtn = document.getElementById('saveAndAddCategoryBtn');
+        if (saveAndAddBtn) {
+            saveAndAddBtn.onclick = function() {
+                handleCreateCategory(true);
+            };
+        }
     }
-    
-    // Đăng ký cho nút "Lưu & Tạo thêm"
-    const saveAndAddBtn = document.getElementById('saveAndAddCategoryBtn');
-    if (saveAndAddBtn) {
-        saveAndAddBtn.onclick = function() {
-            handleCreateCategory(true); // Gửi form, CÓ reset
-        };
-    }
-    
-    // Tải lại danh mục cho bảng quản lý
-    loadCategoriesAdmin();
+});
+
+function setupNav(){
+    const links = document.querySelectorAll('.admin-sidebar a');
+    links.forEach(a => a.addEventListener('click', (e)=>{
+        e.preventDefault();
+        links.forEach(x=>x.classList.remove('active'));
+        a.classList.add('active');
+        const view = a.dataset.view;
+        document.querySelectorAll('.view').forEach(v=>v.style.display='none');
+        document.getElementById('view-'+view).style.display = 'block';
+        
+        if(view === 'dashboard') loadDashboard();
+        if(view === 'books') loadBooksAdmin();
+        if(view === 'users') loadUsersAdmin();
+        if(view === 'orders') loadOrdersAdmin();
+        if(view === 'categories') loadCategoriesAdmin(); 
+    }))
 }
+
+// ======================= CHỨC NĂNG TẠO THỂ LOẠI =======================
 
 async function handleCreateCategory(resetAfterSave = false) {
     const token = localStorage.getItem('token');
@@ -132,23 +131,20 @@ async function handleCreateCategory(resetAfterSave = false) {
         const data = await response.json();
 
         if (response.ok) {
-            showNotification(data.message, 'success');
+            showNotification(`Thêm thành công! ID: #${data.category_id}`, 'success');
             
-            // Hiển thị Category_ID mới tạo (Hậu điều kiện)
             newCategoryIdSpan.textContent = data.category_id;
             categoryResultDiv.style.display = 'block';
 
             if (resetAfterSave) {
-                // Logic reset form cho nút "Lưu & Tạo thêm"
                 categoryNameInput.value = '';
                 categoryDescriptionInput.value = '';
                 categoryResultDiv.style.display = 'none'; 
                 categoryNameInput.focus();
             }
             
-            loadCategoriesAdmin(); // Tải lại bảng danh mục quản lý
+            loadCategoriesAdmin(); 
         } else {
-            // Thất bại (Lỗi 400 Validation, 403 Forbidden, 401 Unauthorized)
             showNotification(data.message || 'Lỗi hệ thống khi tạo thể loại.', 'error');
         }
     } catch (error) {
@@ -158,7 +154,6 @@ async function handleCreateCategory(resetAfterSave = false) {
 }
 
 async function loadCategoriesAdmin() {
-    // API GET /api/categories (Không cần token Admin)
     const el = document.getElementById('categories-list-table');
     el.innerHTML = 'Đang tải danh mục...';
     try {
@@ -167,7 +162,7 @@ async function loadCategoriesAdmin() {
         const data = await res.json();
         const categories = data.categories || [];
         
-        let html = '<div class="table-head"><div>ID</div><div>Tên Thể loại</div><div>Hành động</div></div>';
+        let html = '<div class="table-head"><div>ID</div><div>Tên Thể loại</div><div style="width:150px">Hành động</div></div>';
         
         categories.forEach(cat => {
             html += `<div class="category-row">
@@ -183,33 +178,16 @@ async function loadCategoriesAdmin() {
     }
 }
 
-
-// ======================= CÁC HÀM ADMIN KHÁC (KHÔNG ĐỔI) =======================
+// ======================= CÁC HÀM ADMIN KHÁC (ĐÃ SỬA: BỎ TRẢ HÀNG) =======================
 
 async function loadDashboard(){
+    const token = localStorage.getItem('token');
+    
+    // Tải số liệu chung
     try {
-        const booksRes = await fetch(`${API_BASE}/books`);
-        if (booksRes.ok){
-            const booksData = await booksRes.json();
-            const count = Array.isArray(booksData.books) ? booksData.books.length : (booksData.books && booksData.books.length) || 0;
-            document.getElementById('stat-books').textContent = count;
-            // Filter pending books (assuming 'status' field exists in book objects)
-            const pending = (booksData.books || []).filter(b => b.status === 'pending' || b.status === 'waiting' || b.status === 'chờ duyệt');
-            renderPendingBooks(pending.length ? pending : (booksData.books || []).slice(0,4));
-        } else {
-            document.getElementById('stat-books').textContent = 'N/A';
-            renderPendingBooks([]);
-        }
-    } catch(err){
-        console.warn('Books stat not available', err);
-        document.getElementById('stat-books').textContent = 'N/A';
-        renderPendingBooks([]);
-    }
-
-    // Attempt to fetch dedicated admin stats endpoint
-    try {
-        const statsRes = await fetch(`${API_BASE}/admin/stats`, { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') } });
+        const statsRes = await fetch(`${API_BASE}/admin/stats`, { headers: { 'Authorization': 'Bearer ' + token } });
         const statsData = await statsRes.json();
+        
         if(statsRes.ok){
             document.getElementById('stat-users').textContent = statsData.users || 0;
             document.getElementById('stat-orders').textContent = statsData.orders || 0;
@@ -220,17 +198,34 @@ async function loadDashboard(){
             document.getElementById('stat-revenue').textContent = 'N/A';
         }
     } catch (err) {
-        console.warn('Admin stats endpoint failed', err);
         document.getElementById('stat-users').textContent = 'N/A';
         document.getElementById('stat-orders').textContent = 'N/A';
         document.getElementById('stat-revenue').textContent = 'N/A';
+    }
+    
+    // Tải sách chờ duyệt
+    try {
+        const booksRes = await fetch(`${API_BASE}/books`);
+        if (booksRes.ok){
+            const booksData = await booksRes.json();
+            const count = Array.isArray(booksData.books) ? booksData.books.length : 0;
+            document.getElementById('stat-books').textContent = count;
+            
+            const pending = (booksData.books || []).filter(b => b.status === 'pending' || b.status === 'waiting' || b.status === 'chờ duyệt');
+            renderPendingBooks(pending.length ? pending : (booksData.books || []).slice(0,4));
+        } else {
+            document.getElementById('stat-books').textContent = 'N/A';
+            renderPendingBooks([]);
+        }
+    } catch(err){
+        renderPendingBooks([]);
     }
 }
 
 function renderPendingBooks(list){
     const el = document.getElementById('pending-books');
     if(!list || list.length === 0){
-        el.innerHTML = '<div class="notice">Không có sách chờ duyệt hoặc backend chưa cung cấp trạng thái.</div>';
+        el.innerHTML = '<div class="notice">Không có sách chờ duyệt.</div>';
         return;
     }
     el.innerHTML = '';
@@ -249,7 +244,7 @@ function renderPendingBooks(list){
         btnApprove.onclick = ()=>approveBook(b.book_id || b.id);
         const btnReject = document.createElement('button');
         btnReject.className='btn secondary'; btnReject.textContent='Từ chối';
-        btnReject.onclick = ()=>hideBook(b.book_id || b.id); // Dùng hideBook thay cho reject
+        btnReject.onclick = ()=>hideBook(b.book_id || b.id); 
         actions.appendChild(btnApprove); actions.appendChild(btnReject);
         row.appendChild(img); row.appendChild(meta); row.appendChild(actions);
         el.appendChild(row);
@@ -321,31 +316,73 @@ async function loadOrdersAdmin(){
         const data = await res.json();
         const orders = data.orders || [];
         if(orders.length === 0){ el.innerHTML = '<div class="notice">Không có đơn hàng.</div>'; return; }
-        const head = document.createElement('div'); head.className='table-head'; head.innerHTML = '<div>Order ID</div><div>Thông tin</div><div style="width:220px">Trạng thái</div>';
+        const head = document.createElement('div'); head.className='table-head'; head.innerHTML = '<div>Order ID</div><div>Thông tin</div><div style="width:100px">Trạng thái</div><div style="width:150px">Hành động</div>'; 
         el.innerHTML = ''; el.appendChild(head);
+        
         orders.forEach(o=>{
             const row = document.createElement('div'); row.className='order-row';
-            const info = document.createElement('div'); info.className='meta'; info.innerHTML = `<strong>Order #${o.order_id}</strong><div>Buyer: ${o.buyer_id}</div><div style="color:#9aa6b2">${o.created_at||''}</div>`;
-            const status = document.createElement('div'); status.style.textAlign='right'; status.innerHTML = `<div>${o.status}</div><div style="font-weight:bold">${o.total_amount||0}</div>`;
-            row.appendChild(info); row.appendChild(status); el.appendChild(row);
+            
+            const info = document.createElement('div'); info.className='meta'; 
+            info.innerHTML = `<strong>Order #${o.order_id}</strong>
+                              <div>Buyer: ${o.buyer_id}</div>
+                              <div style="color:#9aa6b2">${o.created_at||''}</div>`;
+            
+            const statusDiv = document.createElement('div'); 
+            statusDiv.innerHTML = `<div class="status-${o.status}">${getOrderStatusName(o.status)}</div>
+                                   <div style="font-weight:bold">${formatPrice(o.total_amount)}</div>`;
+            
+            // Khu vực Hành động (ĐÃ XÓA NÚT TRẢ HÀNG VÀ XÁC NHẬN)
+            const actions = document.createElement('div'); actions.style.textAlign='right';
+            const detailBtn = document.createElement('button');
+            detailBtn.className = 'btn secondary'; 
+            detailBtn.textContent = 'Chi tiết';
+            detailBtn.style.marginRight = '5px';
+            // actions.appendChild(detailBtn); // Hiện tại chưa có logic chi tiết đơn hàng
+            
+            row.appendChild(info); 
+            row.appendChild(statusDiv); 
+            row.appendChild(actions); 
+            el.appendChild(row);
         })
     }catch(e){ el.innerHTML = '<div class="notice">Lỗi khi gọi API đơn hàng: '+e.message+'</div>' }
 }
 
-// Hàm Duyệt Sách
 async function approveBook(bookId){
+    const token = localStorage.getItem('token');
     if(!confirm('Bạn có chắc muốn duyệt sách này?')) return;
+    
     try{
-    const res = await fetch(`${API_BASE}/admin/books/approve/${bookId}`, { method: 'POST', headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+localStorage.getItem('token') } });
-        if(res.ok) { alert('Duyệt thành công'); loadBooksAdmin(); } else { alert('API chưa hỗ trợ hoặc lỗi: '+res.status); }
-    }catch(e){ alert('Không thể gọi endpoint duyệt sách: '+e.message); }
+        const res = await fetch(`${API_BASE}/admin/books/approve/${bookId}`, { method: 'POST', headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+token } });
+        
+        if(res.ok) { 
+            showNotification('Duyệt thành công', 'success'); 
+            loadBooksAdmin();  
+            loadDashboard();   
+        } else { 
+            const data = await res.json();
+            showNotification(data.message || `Lỗi: ${res.status}`, 'error'); 
+        }
+    }catch(e){ 
+        showNotification('Không thể gọi endpoint duyệt sách.', 'error'); 
+    }
 }
 
-// Hàm Ẩn Sách (Thay thế cho Reject)
 async function hideBook(bookId){ 
+    const token = localStorage.getItem('token');
     if(!confirm('Bạn có chắc muốn ẩn/từ chối sách này?')) return;
+    
     try{
-    const res = await fetch(`${API_BASE}/admin/books/hide/${bookId}`, { method: 'POST', headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+localStorage.getItem('token') } });
-        if(res.ok) { alert('Đã ẩn sách'); loadBooksAdmin(); } else { alert('API chưa hỗ trợ hoặc lỗi: '+res.status); }
-    }catch(e){ alert('Không thể gọi endpoint ẩn sách: '+e.message); }
+        const res = await fetch(`${API_BASE}/admin/books/hide/${bookId}`, { method: 'POST', headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+token } });
+        
+        if(res.ok) { 
+            showNotification('Đã ẩn sách', 'success'); 
+            loadBooksAdmin(); 
+            loadDashboard(); 
+        } else { 
+            const data = await res.json();
+            showNotification(data.message || `Lỗi: ${res.status}`, 'error'); 
+        }
+    }catch(e){ 
+        showNotification('Không thể gọi endpoint ẩn sách.', 'error'); 
+    }
 }

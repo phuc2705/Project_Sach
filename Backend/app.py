@@ -9,7 +9,6 @@ import os
 from config import Config 
 
 app = Flask(__name__)
-# Đã tải cấu hình từ config.py
 app.config.from_object(Config) 
 CORS(app)
 
@@ -27,7 +26,7 @@ def get_db_connection():
             'DATABASE=BookStoreDBO;'
             'Trusted_Connection=yes;'
         )
-        conn.autocommit = False # Tắt autocommit để quản lý transaction bằng commit/rollback
+        conn.autocommit = False # Tắt autocommit để quản lý transaction
         return conn
     except Exception as e:
         print(f"Database connection error: {e}") 
@@ -110,6 +109,7 @@ def generate_token(user_id):
 
 @app.route('/api/uploads/<path:filename>')
 def uploaded_file(filename):
+    """Phục vụ file ảnh tĩnh từ thư mục uploads"""
     if not os.path.isdir(UPLOAD_DIRECTORY):
         os.makedirs(UPLOAD_DIRECTORY)
         
@@ -451,12 +451,12 @@ def add_review(current_user_id, book_id):
         if conn:
             conn.close()
 
-# ==================== ORDER ROUTES (KHÔNG ĐỔI) ====================
+# ==================== ORDER ROUTES (ĐÃ KHÔI PHỤC LOGIC TRỪ TỒN KHO TẠI ĐÂY) ====================
 
 @app.route('/api/orders', methods=['POST'])
 @token_required
 def create_order(current_user_id):
-    """Tạo đơn hàng mới với thông tin chi tiết"""
+    """Tạo đơn hàng mới: TRỪ TỒN KHO NGAY LẬP TỨC"""
     conn = None
     cursor = None
     try:
@@ -477,7 +477,7 @@ def create_order(current_user_id):
         
         cursor = conn.cursor()
         
-        # Tạo order
+        # 1. Tạo order
         cursor.execute("""
             INSERT INTO Orders (buyer_id, total_amount, status, shipping_address, phone, payment_method, notes, created_at)
             OUTPUT INSERTED.order_id
@@ -486,8 +486,9 @@ def create_order(current_user_id):
         
         order_id = cursor.fetchone()[0]
         
-        # Thêm order details
+        # 2. Thêm order details VÀ TRỪ TỒN KHO
         for item in items:
+            # TRỪ TỒN KHO (NHƯ YÊU CẦU CŨ CỦA BẠN)
             cursor.execute("""
                 UPDATE Books
                 SET stock = stock - ?
@@ -503,13 +504,13 @@ def create_order(current_user_id):
         conn.commit()
         
         return jsonify({
-            'message': 'Đặt hàng thành công!',
+            'message': 'Đặt hàng thành công! Tồn kho đã được trừ.',
             'order_id': order_id
         }), 201
         
     except Exception as e:
         if conn and not conn.autocommit:
-            conn.rollback()
+            conn.rollback() # Hoàn tác giao dịch nếu có lỗi (ví dụ: tồn kho âm)
         print(f"Create order error: {e}")
         return jsonify({'message': 'Có lỗi xảy ra!'}), 500
     finally:
@@ -563,7 +564,7 @@ def get_user_orders(current_user_id):
         if conn:
             conn.close()
 
-# ==================== CATEGORY ROUTES (KHÔI PHỤC VÀ HOÀN THIỆN TẠO THỂ LOẠI) ====================
+# ==================== CATEGORY ROUTES ====================
 
 @app.route('/api/categories', methods=['GET'])
 def get_categories():
@@ -600,7 +601,7 @@ def get_categories():
 @app.route('/api/categories', methods=['POST'])
 @admin_required
 def create_category(current_user_id):
-    """CHỨC NĂNG TẠO THỂ LOẠI MỚI: Chỉ Admin có thể thêm vào CSDL với Mô tả"""
+    """CHỨC NĂNG TẠO THỂ LOẠI MỚI"""
     conn = None
     cursor = None
     try:
@@ -608,11 +609,9 @@ def create_category(current_user_id):
         category_name = data.get('category_name')
         description = data.get('description', '')
 
-        # Tiền điều kiện: Kiểm tra Category_Name (ràng buộc bắt buộc và giới hạn ký tự)
         if not category_name or len(category_name.strip()) == 0 or len(category_name) > 100:
             return jsonify({'message': 'Tên thể loại không hợp lệ (không được rỗng, tối đa 100 ký tự).'}), 400
         
-        # Tiền điều kiện: Kiểm tra Description
         if len(description) > 1000:
             return jsonify({'message': 'Mô tả quá dài (tối đa 1000 ký tự).'}), 400
 
@@ -622,7 +621,6 @@ def create_category(current_user_id):
 
         cursor = conn.cursor()
 
-        # Kiểm tra trùng lặp (Category_Name)
         cursor.execute("SELECT category_id FROM Categories WHERE category_name = ?", (category_name.strip(),))
         if cursor.fetchone():
             return jsonify({'message': 'Thể loại đã tồn tại. Vui lòng chọn tên khác!'}), 400
@@ -639,7 +637,6 @@ def create_category(current_user_id):
         
         conn.commit()
 
-        # Hậu điều kiện: Trả về ID mới tạo và thông báo thành công
         return jsonify({
             'message': f'Thêm thể loại "{category_name}" thành công!',
             'category_id': new_id
@@ -648,7 +645,7 @@ def create_category(current_user_id):
     except Exception as e:
         print(f"Create category error: {e}")
         if conn and not conn.autocommit:
-            conn.rollback() # Hoàn tác giao dịch nếu có lỗi
+            conn.rollback() 
         return jsonify({'message': 'Có lỗi xảy ra khi tạo thể loại (Lỗi hệ thống).'}), 500
     finally:
         if cursor:
@@ -656,9 +653,9 @@ def create_category(current_user_id):
         if conn:
             conn.close()
 
-# ==================== ADMIN ENDPOINTS (KHÔNG ĐỔI) ====================
-# ... (Các route Admin khác giữ nguyên)
+# ==================== ADMIN ENDPOINTS (KHÔI PHỤC VỀ TRẠNG THÁI KHÔNG TRẢ HÀNG) ====================
 
+# ADMIN STATS
 @app.route('/api/admin/stats', methods=['GET'])
 @admin_required
 def admin_stats(current_user_id):
@@ -676,7 +673,7 @@ def admin_stats(current_user_id):
         books_count = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM Orders")
         orders_count = cursor.fetchone()[0]
-        cursor.execute("SELECT ISNULL(SUM(total_amount),0) FROM Orders")
+        cursor.execute("SELECT ISNULL(SUM(total_amount),0) FROM Orders WHERE status = 'delivered'") 
         revenue = cursor.fetchone()[0]
 
         return jsonify({
@@ -695,6 +692,7 @@ def admin_stats(current_user_id):
         if conn:
             conn.close()
 
+# ADMIN LIST USERS
 @app.route('/api/admin/users', methods=['GET'])
 @admin_required
 def admin_list_users(current_user_id):
@@ -722,6 +720,7 @@ def admin_list_users(current_user_id):
         if conn:
             conn.close()
 
+# ADMIN LOCK USER
 @app.route('/api/admin/users/lock/<int:user_id>', methods=['POST'])
 @admin_required
 def admin_lock_user(current_user_id, user_id):
@@ -746,6 +745,7 @@ def admin_lock_user(current_user_id, user_id):
         if conn:
             conn.close()
 
+# ADMIN UNLOCK USER
 @app.route('/api/admin/users/unlock/<int:user_id>', methods=['POST'])
 @admin_required
 def admin_unlock_user(current_user_id, user_id):
@@ -770,6 +770,7 @@ def admin_unlock_user(current_user_id, user_id):
         if conn:
             conn.close()
 
+# ADMIN LIST ORDERS
 @app.route('/api/admin/orders', methods=['GET'])
 @admin_required
 def admin_list_orders(current_user_id):
@@ -795,6 +796,7 @@ def admin_list_orders(current_user_id):
         if conn:
             conn.close()
 
+# ADMIN APPROVE BOOK
 @app.route('/api/admin/books/approve/<int:book_id>', methods=['POST'])
 @admin_required
 def admin_approve_book(current_user_id, book_id):
@@ -819,6 +821,7 @@ def admin_approve_book(current_user_id, book_id):
         if conn:
             conn.close()
 
+# ADMIN HIDE BOOK
 @app.route('/api/admin/books/hide/<int:book_id>', methods=['POST'])
 @admin_required
 def admin_hide_book(current_user_id, book_id):
@@ -842,6 +845,10 @@ def admin_hide_book(current_user_id, book_id):
             cursor.close()
         if conn:
             conn.close()
+
+
+# Lệnh confirm_order và return_order đã được XÓA hoàn toàn khỏi Backend.
+
 
 # ==================== MAIN ====================
 
